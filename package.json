@@ -1,0 +1,16 @@
+{
+  "name": "cutroom",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @cutroom/web dev",
+    "test": "pnpm --filter @cutroom/engine test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
