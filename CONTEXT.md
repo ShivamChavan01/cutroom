@@ -118,8 +118,15 @@ From Cardboard's hard-problems doc:
   (added/removed/moved/trimmed/edited)
 - `packages/engine/src/merge.ts` — 3-way field merge + overlap pass,
   `resolveField`, `overlappingPairs`
-- 40 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
-  11, merge.test 13), `tsc --noEmit` clean
+- 56 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
+  11, merge.test 13, lint.test 16), `tsc --noEmit` clean
+- `packages/engine/src/lint.ts` — Verification linter: `Diagnostic`,
+  `Rule`, `defineRule` harness, `lint()` with include/exclude/severity
+  overrides, 7 built-in rules (overlap, gap, missing-media, flash-frame,
+  trim-past-source, zero-length, unused-asset). Deliberate swap: `clipping`
+  dropped because `setVolume` already rejects out-of-range values — a rule
+  that can never fire is decoration. Severity is caller-assigned, so
+  proxy-first workflows can downgrade missing-media to a warning
 - Tests cover: split determinism across branches, clean merge, field
   conflict, the overlap case a naive merge misses, no auto-shift,
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
@@ -131,9 +138,8 @@ From Cardboard's hard-problems doc:
 - Version Control presentation layer: branches, commits, checkout,
   conflict-resolution UI ("resolve without friction" half of Cardboard's
   question).
-- Verification (linter): nothing. Planned as pure `lint(timeline) →
-  diagnostics[]` in the engine — overlap, gap, missing media, flash frame,
-  clipping, trim-past-source rules.
+- Verification (linter): DONE in the engine (`lint.ts`). Remaining is the
+  UI rendering of diagnostics (squiggles/markers on the timeline).
 - Effect ops (`applyFilter`, `setCaption`, ...): discussed, not built.
   Design agreed: content edits as parameterized ops so the agent's output
   flows through the existing log/diff/merge machinery. Rendering them needs
