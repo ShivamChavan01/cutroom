@@ -158,7 +158,7 @@ From Cardboard's hard-problems doc:
 ## Remaining plan
 
 - [ ] Effect ops in the engine (agent-edit representation)
-- [ ] Verification linter in the engine (`lint()` + rules + tests)
+- [x] Verification linter in the engine (`lint()` + rules + tests) — DONE (`598af3d`), UI rendering still open
 - [ ] Timeline UI + player: render clips, scrub, split/trim/delete via the
       engine, swap `<video>` src at clip boundaries, preload next clip
 - [ ] Web Worker for thumbnails/waveform (keep scrubbing smooth)
