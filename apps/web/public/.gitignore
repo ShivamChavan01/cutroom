@@ -1,0 +1,3 @@
+# Dev-only test media. Drop short mp4s here as test-a.mp4 / test-b.mp4
+# for the §4 player checkpoint. Never commit real footage.
+*.mp4

@@ -132,8 +132,15 @@ From Cardboard's hard-problems doc:
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
   malformed-clip rejection
 
+**Built, browser-tested (`apps/web`, uncommitted until now):**
+- Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
+- Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale
+- Player: `<video>` src swap at clip boundaries via pure `resolveActiveClip`, drift correction (never forced), next-clip preload with swap-stall logging, gap/missing-media states, edit-during-playback without loop restart
+- Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
+- Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
+- 13 web tests green (store, timeScale, playback), `tsc` clean, `vite build` succeeds
+
 **Not built:**
-- `apps/web` — empty. Timeline UI, player, diff/conflict views.
 - `apps/server` — empty. Sync, commits, blob store.
 - Version Control presentation layer: branches, commits, checkout,
   conflict-resolution UI ("resolve without friction" half of Cardboard's
