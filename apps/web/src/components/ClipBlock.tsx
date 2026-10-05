@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { Clip, Diagnostic } from "@cutroom/engine";
 import type { TimeScale } from "../lib/timeScale";
+import { authorColor } from "../lib/identity";
 import { useEditorStore } from "../store";
 
 /** Below this a trim is treated as noise, not intent. */
@@ -17,6 +18,7 @@ interface ClipBlockProps {
   readonly scale: TimeScale;
   readonly assetDurationMs: number | undefined;
   readonly diagnostics: readonly Diagnostic[];
+  readonly author: string | undefined;
 }
 
 /**
@@ -29,6 +31,7 @@ export const ClipBlock = memo(function ClipBlock({
   scale,
   assetDurationMs,
   diagnostics,
+  author,
 }: ClipBlockProps) {
   const selected = useEditorStore((state) => state.selectedClipId === clip.id);
   const selectClip = useEditorStore((state) => state.selectClip);
@@ -130,7 +133,10 @@ export const ClipBlock = memo(function ClipBlock({
       role="button"
       tabIndex={0}
       aria-label={`clip ${clip.id}`}
-      title={diagnostics.map((d) => d.message).join("\n") || clip.id}
+      title={[
+        ...(author !== undefined ? [`last edited by ${author}`] : []),
+        ...diagnostics.map((d) => d.message),
+      ].join("\n") || clip.id}
       onClick={(event) => {
         event.stopPropagation();
         selectClip(clip.id);
@@ -164,6 +170,16 @@ export const ClipBlock = memo(function ClipBlock({
     >
       {(hasError || hasWarning) && (
         <span style={{ marginRight: 4 }}>{hasError ? "●" : "○"}</span>
+      )}
+      {author !== undefined && (
+        <span
+          title={`last edited by ${author}`}
+          style={{
+            display: "inline-block", width: 7, height: 7,
+            borderRadius: "50%", marginRight: 4,
+            background: authorColor(author),
+          }}
+        />
       )}
       {clip.id}
       <div {...handleProps("left")} />

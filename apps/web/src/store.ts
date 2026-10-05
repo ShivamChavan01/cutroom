@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import {
+  type Asset,
   type Clip,
   type History,
   type Op,
@@ -11,29 +12,12 @@ import {
   createHistory,
   current,
   emptyTimeline,
+  putAsset,
   record,
   redo as historyRedo,
   undo as historyUndo,
 } from "@cutroom/engine";
-
-/**
- * Local author identity. No auth in this prototype: a stable name in
- * localStorage, created once. The color is derived from the name downstream
- * (presence, blame) so identity and color can never disagree.
- */
-function getOrCreateAuthorId(): string {
-  const KEY = "cutroom.authorId";
-  try {
-    const existing = localStorage.getItem(KEY);
-    if (existing !== null && existing.length > 0) return existing;
-    const fresh = `Guest-${Math.floor(1000 + Math.random() * 9000)}`;
-    localStorage.setItem(KEY, fresh);
-    return fresh;
-  } catch {
-    // Non-browser environment (tests): ephemeral identity, never persisted.
-    return `Guest-${Math.floor(1000 + Math.random() * 9000)}`;
-  }
-}
+import { getOrCreateAuthorId } from "./lib/identity";
 
 export interface EditorStore {
   readonly history: History;
@@ -57,6 +41,12 @@ export interface EditorStore {
   readonly setZoom: (pxPerSecond: number) => void;
   /** Replace the whole editing session (tests, branch checkout later). */
   readonly loadTimeline: (timeline: Timeline) => void;
+  /**
+   * Register an asset without touching the op log. Assets ride in the
+   * history base, so undo/redo replay keeps working — the log only holds
+   * clip ops, and the base carries everything the log needs to interpret.
+   */
+  readonly addAsset: (asset: Asset) => void;
 }
 
 function derive(history: History): Pick<EditorStore, "history" | "timeline"> {
@@ -104,6 +94,14 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       playheadMs: 0,
       isPlaying: false,
       authorId: state.authorId,
+    })),
+
+  addAsset: (asset) =>
+    set((state) => ({
+      ...derive({
+        ...state.history,
+        base: putAsset(state.history.base, asset),
+      }),
     })),
 }));
 

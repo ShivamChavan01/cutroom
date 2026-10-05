@@ -139,6 +139,9 @@ From Cardboard's hard-problems doc:
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
 - 13 web tests green (store, timeScale, playback), `tsc` clean, `vite build` succeeds
+- Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as English with undo-dimming
+- Video upload: file picker → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1
+- Git workflow (`vcs.ts` + store + UI): commits snapshotting timelines, branches as head pointers, checkout with dirty guard, merge with base-finding and per-conflict resolution (field/deleteModify/overlap), 2-parent merge commits
 
 **Not built:**
 - `apps/server` — empty. Sync, commits, blob store.

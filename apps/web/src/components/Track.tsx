@@ -10,6 +10,7 @@ interface TrackProps {
   readonly laneWidth: number;
   readonly assetDurations: Readonly<Record<string, number>>;
   readonly diagnosticsByClip: ReadonlyMap<string, readonly Diagnostic[]>;
+  readonly authors: ReadonlyMap<string, string>;
 }
 
 export const Track = memo(function Track({
@@ -18,6 +19,7 @@ export const Track = memo(function Track({
   laneWidth,
   assetDurations,
   diagnosticsByClip,
+  authors,
 }: TrackProps) {
   const clips = useClipsOnTrack(trackId);
   const selectClip = useEditorStore((state) => state.selectClip);
@@ -53,6 +55,7 @@ export const Track = memo(function Track({
           scale={scale}
           assetDurationMs={assetDurations[clip.assetId]}
           diagnostics={diagnosticsByClip.get(clip.id) ?? []}
+          author={authors.get(clip.id)}
         />
       ))}
     </div>

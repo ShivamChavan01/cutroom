@@ -3,6 +3,9 @@ import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
 import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { ActivityFeed } from "./components/ActivityFeed";
+import { UploadButton } from "./components/UploadButton";
+import { VersionControl } from "./components/VersionControl";
 import { registerAssetUrl } from "./lib/assets";
 import { useEditorStore, useSelection } from "./store";
 
@@ -147,6 +150,7 @@ export function App() {
       <Player />
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={seedTestClips}>Add test clips</button>
+        <UploadButton />
         <button onClick={seedOverlap}>Add overlapping clip (§6 demo)</button>
         <button onClick={splitAtPlayhead} disabled={!canSplit} title="S">
           Split at playhead
@@ -177,6 +181,8 @@ export function App() {
       </div>
       <Timeline />
       <DiagnosticsPanel />
+      <ActivityFeed />
+      <VersionControl />
       <p style={{ fontSize: 11, color: "#495057", marginTop: 12 }}>
         Shortcuts: S split · Delete remove · Space play/pause · Ctrl+Z / Ctrl+Shift+Z undo/redo.
         Drag clip edges to trim (one op on release).

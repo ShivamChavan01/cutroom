@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { lint, timelineDuration } from "@cutroom/engine";
+import { authorsByClip, lint, timelineDuration } from "@cutroom/engine";
 import { createTimeScale } from "../lib/timeScale";
 import { useEditorStore, usePlayhead, useTrackIds } from "../store";
 import { Track } from "./Track";
@@ -8,6 +8,7 @@ import { Track } from "./Track";
 const TAIL_MS = 5_000;
 
 export function Timeline() {
+  const history = useEditorStore((state) => state.history);
   const timeline = useEditorStore((state) => state.timeline);
   const trackIds = useTrackIds();
   const playheadMs = usePlayhead();
@@ -32,6 +33,10 @@ export function Timeline() {
     }
     return map;
   }, [timeline]);
+
+  // Blame, derived from the log like everything else — recomputed only
+  // when history moves, so playhead ticks never re-derive it.
+  const authors = useMemo(() => authorsByClip(history), [history]);
 
   const assetDurations = useMemo(() => {
     const out: Record<string, number> = {};
@@ -69,6 +74,7 @@ export function Timeline() {
             laneWidth={laneWidth}
             assetDurations={assetDurations}
             diagnosticsByClip={diagnosticsByClip}
+            authors={authors}
           />
         ))}
         {/* Playhead */}
