@@ -1,7 +1,28 @@
 import { useRef, useState } from "react";
-import { makeClip, timelineDuration } from "@cutroom/engine";
+import { makeClip, stringifyOTIO, timelineDuration } from "@cutroom/engine";
 import { registerAssetUrl } from "../lib/assets";
 import { useEditorStore } from "../store";
+
+/** Download the current timeline as .otio for Premiere/Resolve/Blender. */
+export function ExportOitioButton() {
+  const timeline = useEditorStore((state) => state.timeline);
+  return (
+    <button
+      onClick={() => {
+        const blob = new Blob([stringifyOTIO(timeline)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${timeline.id || "timeline"}.otio`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }}
+      title="Export OpenTimelineIO for Premiere / Resolve / Blender"
+    >
+      Export .otio
+    </button>
+  );
+}
 
 /** Short deterministic id when hashing is unavailable. Never silent. */
 async function assetIdFor(file: File): Promise<string> {

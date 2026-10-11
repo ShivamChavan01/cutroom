@@ -4,7 +4,7 @@ import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ActivityFeed } from "./components/ActivityFeed";
-import { UploadButton } from "./components/UploadButton";
+import { UploadButton, ExportOitioButton } from "./components/UploadButton";
 import { VersionControl } from "./components/VersionControl";
 import { registerAssetUrl } from "./lib/assets";
 import { useEditorStore, useSelection } from "./store";
@@ -151,6 +151,7 @@ export function App() {
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={seedTestClips}>Add test clips</button>
         <UploadButton />
+        <ExportOitioButton />
         <button onClick={seedOverlap}>Add overlapping clip (§6 demo)</button>
         <button onClick={splitAtPlayhead} disabled={!canSplit} title="S">
           Split at playhead
