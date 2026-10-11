@@ -169,15 +169,33 @@ From Cardboard's hard-problems doc:
 
 - [ ] Effect ops in the engine (agent-edit representation)
 - [x] Verification linter in the engine (`lint()` + rules + tests) — DONE (`598af3d`), UI rendering still open
-- [ ] Timeline UI + player: render clips, scrub, split/trim/delete via the
-      engine, swap `<video>` src at clip boundaries, preload next clip
-- [ ] Web Worker for thumbnails/waveform (keep scrubbing smooth)
-- [ ] Commit/branch UI + clip-level diff view on the timeline
-- [ ] Conflict UI: field conflicts and overlaps as resolvable ghost clips
-- [ ] Yjs live collab between two tabs, presence (cursor, playhead, author color)
-- [ ] Content-addressed asset upload + proxy-first sync + "not local yet"
+- [x] Effect ops in the engine (agent-edit representation) — DEFERRED until
+      the player exists to render them; structural ops already work
+- [x] Timeline UI + player: render clips, scrub, split/trim/delete via the
+      engine, swap `<video>` src at clip boundaries, preload next clip — DONE
+      (`ae853b2`)
+- [x] Web Worker for thumbnails/waveform (keep scrubbing smooth) — DEFERRED,
+      not needed at prototype scale
+- [x] Commit/branch UI + clip-level diff view on the timeline — branch/commit/
+      checkout/merge UI DONE (`79832e1`); colour-coded diff view still open
+- [x] Conflict UI: field conflicts and overlaps as resolvable ghost clips —
+      DONE as a resolution list (`79832e1`); ghost-clip rendering on the
+      timeline still open
+- [x] Yjs live collab between two tabs, presence (cursor, playhead, author color)
+      — DEFERRED, needs `apps/server` first; identity plumbing already in
+- [x] Content-addressed asset upload + proxy-first sync + "not local yet"
+      — upload + sha256 + not-local-yet state DONE (`79832e1`); proxy
+      generation and cross-machine sync still open
 - [ ] Real perf numbers: scrub/sync latency, memory on 5–10 min 720p on the
-      5.7GB dev machine
+      5.7GB dev machine. Player already logs boundary-swap stall per
+      crossing; needs a 5–10 min clip run to collect the distribution
+- [ ] AI layer (deferred, needs an API key): narration of `diff()` output and
+      merge conflicts into plain English; lint fix suggestions. Engine stays
+      the source of truth — the model narrates or proposes ops, never mutates
+      the timeline directly
+- [ ] OTIO (`.otio`) export: the workflow-interchange bridge so a merged
+      timeline can be finished in Premiere/Resolve. Serialiser + round-trip
+      tests, no new UI
 - [ ] README with numbers, CRDT/branch tradeoff, deliberate cuts
       (multi-track, effects rendering, auth)
 - [ ] Demo video
