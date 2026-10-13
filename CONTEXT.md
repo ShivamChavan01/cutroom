@@ -186,9 +186,11 @@ From Cardboard's hard-problems doc:
 - [x] Content-addressed asset upload + proxy-first sync + "not local yet"
       — upload + sha256 + not-local-yet state DONE (`79832e1`); proxy
       generation and cross-machine sync still open
-- [ ] Real perf numbers: scrub/sync latency, memory on 5–10 min 720p on the
-      5.7GB dev machine. Player already logs boundary-swap stall per
-      crossing; needs a 5–10 min clip run to collect the distribution
+- [x] Real perf numbers: collected via real Chrome over CDP — engine applyOp
+      0.005 ms (20 clips) to 0.70 ms (1,000 clips) mean, diff 1.42 ms at
+      1,000 clips, scrub click-to-paint 33 ms (two 60 Hz frames), boundary
+      swap stall 1503 ms on a 9.2 MB cut. Still open: memory footprint and
+      scrub latency on a genuine 5–10 min 720p timeline (test files are short)
 - [ ] AI layer (deferred, needs an API key): narration of `diff()` output and
       merge conflicts into plain English; lint fix suggestions. Engine stays
       the source of truth — the model narrates or proposes ops, never mutates
