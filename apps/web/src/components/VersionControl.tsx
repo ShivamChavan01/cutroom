@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   type MergeResult,
+  type Timeline,
   diffTimelines,
   resolveField,
 } from "@cutroom/engine";
-import { branchHistory, head, resolveDeleteModify, resolveOverlap } from "../lib/vcs";
+import {
+  type Repo,
+  branchHistory,
+  head,
+  resolveDeleteModify,
+  resolveOverlap,
+} from "../lib/vcs";
 import { authorColor } from "../lib/identity";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
@@ -71,18 +78,116 @@ function ConflictRow({
   );
 }
 
+function DiffCompare({
+  repo,
+  timeline,
+  diffBase,
+  diffTarget,
+  onBase,
+  onTarget,
+}: {
+  repo: Repo;
+  timeline: Timeline;
+  diffBase: string;
+  diffTarget: string;
+  onBase: (value: string) => void;
+  onTarget: (value: string) => void;
+}) {
+  const store = useVcsStore.getState();
+  const diffOverlay = useVcsStore((state) => state.diffOverlay);
+  const { options, resolve } = diffTargets(repo);
+
+  const compare = () => {
+    const base =
+      diffBase === "working"
+        ? { timeline, label: "working copy" }
+        : resolve(diffBase);
+    const target =
+      diffTarget === "working"
+        ? { timeline, label: "working copy" }
+        : resolve(diffTarget);
+    if (base === null || target === null) return;
+    store.setDiff(base.timeline, base.label, target.timeline, target.label);
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
+      <span style={{ color: "#868e96" }}>Diff</span>
+      <select value={diffBase} onChange={(event) => onBase(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <span style={{ color: "#868e96" }}>→</span>
+      <select value={diffTarget} onChange={(event) => onTarget(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button onClick={compare}>Compare</button>
+      {diffOverlay !== null && (
+        <>
+          <span style={{ color: "#868e96" }}>
+            {diffOverlay.baseLabel} → {diffOverlay.targetLabel}:{" "}
+            {diffOverlay.diff.added} added, {diffOverlay.diff.removed} removed,{" "}
+            {diffOverlay.diff.changed} changed
+          </span>
+          <button onClick={store.clearDiff}>Clear</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Git for video, first face: branches, commits, merge with explicit
  * conflict resolution. Every resolution is a side-pick or a removal —
  * the UI cannot invent timeline content the engine didn't produce.
  */
+/**
+ * Anything diffable: the working copy, a branch head, or any commit.
+ * Values encode as `kind:id` so the select stays a plain string.
+ */
+type DiffTarget = { readonly value: string; readonly label: string };
+
+function diffTargets(
+  repo: Repo,
+): { readonly options: readonly DiffTarget[]; readonly resolve: (value: string) => { timeline: Timeline; label: string } | null } {
+  const options: DiffTarget[] = [{ value: "working", label: "Working copy" }];
+  const timelines = new Map<string, { timeline: Timeline; label: string }>();
+  for (const [name, headId] of Object.entries(repo.branches)) {
+    const commit = repo.commits[headId];
+    if (commit === undefined) continue;
+    options.push({ value: `branch:${name}`, label: `Branch ${name}` });
+    timelines.set(`branch:${name}`, { timeline: commit.timeline, label: `branch ${name}` });
+  }
+  const seen = new Set<string>();
+  for (const commit of Object.values(repo.commits)) {
+    if (seen.has(commit.id)) continue;
+    seen.add(commit.id);
+    options.push({ value: `commit:${commit.id}`, label: `${commit.id} ${commit.message}` });
+    timelines.set(`commit:${commit.id}`, { timeline: commit.timeline, label: `commit ${commit.id}` });
+  }
+  return {
+    options,
+    resolve: (value) => timelines.get(value) ?? null,
+  };
+}
+
 export function VersionControl() {
   const repo = useVcsStore((state) => state.repo);
   const pending = useVcsStore((state) => state.pending);
+  const diffOverlay = useVcsStore((state) => state.diffOverlay);
   const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [mergeSource, setMergeSource] = useState("");
+  const [diffBase, setDiffBase] = useState("working");
+  const [diffTarget, setDiffTarget] = useState("working");
 
   const store = useVcsStore.getState();
   useEffect(() => {
@@ -207,6 +312,15 @@ export function VersionControl() {
           </li>
         ))}
       </ul>
+
+      <DiffCompare
+        repo={repo}
+        timeline={timeline}
+        diffBase={diffBase}
+        diffTarget={diffTarget}
+        onBase={setDiffBase}
+        onTarget={setDiffTarget}
+      />
 
       {pending === null ? (
         <div style={{ display: "flex", gap: 6 }}>

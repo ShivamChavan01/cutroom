@@ -1,11 +1,18 @@
 import { useMemo } from "react";
 import { authorsByClip, lint, timelineDuration } from "@cutroom/engine";
+import { diffToVisuals, type ClipVisual } from "../lib/diffView";
 import { createTimeScale } from "../lib/timeScale";
 import { useEditorStore, usePlayhead, useTrackIds } from "../store";
+import { useVcsStore } from "../vcsStore";
 import { Track } from "./Track";
 
 /** Trailing space so the last clip never sits flush against the edge. */
 const TAIL_MS = 5_000;
+
+// Stable empty references: passing fresh `{}` / `[]` per render would defeat
+// Track's memo on every playhead tick when no diff is active.
+const EMPTY_MAP: ReadonlyMap<string, ClipVisual> = new Map();
+const EMPTY_LIST: readonly ClipVisual[] = [];
 
 export function Timeline() {
   const history = useEditorStore((state) => state.history);
@@ -37,6 +44,14 @@ export function Timeline() {
   // Blame, derived from the log like everything else — recomputed only
   // when history moves, so playhead ticks never re-derive it.
   const authors = useMemo(() => authorsByClip(history), [history]);
+
+  // Diff overlay: computed once per overlay object, fanned out per clip
+  // and per track for ghosts. Null when no comparison is active.
+  const diffOverlay = useVcsStore((state) => state.diffOverlay);
+  const diffVisuals = useMemo(
+    () => (diffOverlay === null ? null : diffToVisuals(diffOverlay.diff)),
+    [diffOverlay],
+  );
 
   const assetDurations = useMemo(() => {
     const out: Record<string, number> = {};
@@ -77,6 +92,8 @@ export function Timeline() {
             assetDurations={assetDurations}
             diagnosticsByClip={diagnosticsByClip}
             authors={authors}
+            diffById={diffVisuals?.byId ?? EMPTY_MAP}
+            ghosts={diffVisuals?.ghostsByTrack.get(trackId) ?? EMPTY_LIST}
           />
         ))}
         {/* Playhead */}

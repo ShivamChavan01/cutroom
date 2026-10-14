@@ -8,7 +8,16 @@ import {
 import type { Clip, Diagnostic } from "@cutroom/engine";
 import type { TimeScale } from "../lib/timeScale";
 import { authorColor } from "../lib/identity";
+import type { DiffTint } from "../lib/diffView";
 import { useEditorStore } from "../store";
+
+export const DIFF_BORDER: Record<DiffTint, string> = {
+  added: "#51cf66",
+  removed: "#ff6b6b",
+  moved: "#74c0fc",
+  trimmed: "#ffd43b",
+  edited: "#b197fc",
+};
 
 /** Below this a trim is treated as noise, not intent. */
 const MIN_DURATION_MS = 50;
@@ -19,6 +28,10 @@ interface ClipBlockProps {
   readonly assetDurationMs: number | undefined;
   readonly diagnostics: readonly Diagnostic[];
   readonly author: string | undefined;
+  /** Diff overlay: tint + text cue. Ghosts render dashed and inert. */
+  readonly diffTint?: DiffTint;
+  readonly diffBadge?: string;
+  readonly ghost?: boolean;
 }
 
 /**
@@ -32,6 +45,9 @@ export const ClipBlock = memo(function ClipBlock({
   assetDurationMs,
   diagnostics,
   author,
+  diffTint,
+  diffBadge,
+  ghost = false,
 }: ClipBlockProps) {
   const selected = useEditorStore((state) => state.selectedClipId === clip.id);
   const selectClip = useEditorStore((state) => state.selectClip);
@@ -128,15 +144,51 @@ export const ClipBlock = memo(function ClipBlock({
     onPointerCancel: () => endDrag(),
   });
 
+  const diffBorder =
+    diffTint !== undefined ? `2px solid ${DIFF_BORDER[diffTint]}` : undefined;
+  const titleLines = [
+    ...(author !== undefined ? [`last edited by ${author}`] : []),
+    ...(diffBadge !== undefined ? [`diff: ${diffBadge}`] : []),
+    ...diagnostics.map((d) => d.message),
+  ];
+
+  if (ghost) {
+    // Removed clips render at their old position, dashed and inert: no
+    // selection, no trim handles, no pointer interaction.
+    return (
+      <div
+        aria-label={`removed clip ${clip.id}`}
+        title={titleLines.join("\n") || clip.id}
+        style={{
+          position: "absolute",
+          left: scale.timeToPx(clip.start),
+          width: Math.max(2, scale.timeToPx(clip.duration)),
+          top: 4,
+          bottom: 4,
+          background: "transparent",
+          border: `2px dashed ${DIFF_BORDER.removed}`,
+          borderRadius: 4,
+          color: "#ffa8a8",
+          fontSize: 11,
+          padding: "2px 6px",
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          boxSizing: "border-box",
+          opacity: 0.6,
+          pointerEvents: "none",
+        }}
+      >
+        ✕ {clip.id} {diffBadge !== undefined ? `· ${diffBadge}` : ""}
+      </div>
+    );
+  }
+
   return (
     <div
       role="button"
       tabIndex={0}
       aria-label={`clip ${clip.id}`}
-      title={[
-        ...(author !== undefined ? [`last edited by ${author}`] : []),
-        ...diagnostics.map((d) => d.message),
-      ].join("\n") || clip.id}
+      title={titleLines.join("\n") || clip.id}
       onClick={(event) => {
         event.stopPropagation();
         selectClip(clip.id);
@@ -151,7 +203,9 @@ export const ClipBlock = memo(function ClipBlock({
         top: 4,
         bottom: 4,
         background: clip.trackId.startsWith("a") ? "#2f6f4f" : "#3b5bdb",
-        border: selected ? "2px solid #ffd43b" : "1px solid rgba(255,255,255,0.25)",
+        border:
+          diffBorder ??
+          (selected ? "2px solid #ffd43b" : "1px solid rgba(255,255,255,0.25)"),
         borderBottom: hasError
           ? "3px solid #ff6b6b"
           : hasWarning
@@ -180,6 +234,9 @@ export const ClipBlock = memo(function ClipBlock({
             background: authorColor(author),
           }}
         />
+      )}
+      {diffBadge !== undefined && (
+        <span style={{ marginRight: 4, opacity: 0.9 }}>{diffBadge}</span>
       )}
       {clip.id}
       <div {...handleProps("left")} />

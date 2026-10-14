@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { type MergeResult, mergeTimelines } from "@cutroom/engine";
+import {
+  type Diff,
+  type MergeResult,
+  type Timeline,
+  diffTimelines,
+  mergeTimelines,
+} from "@cutroom/engine";
 import {
   type Repo,
   checkout,
@@ -17,9 +23,16 @@ export interface PendingMerge {
   result: MergeResult;
 }
 
+export interface DiffOverlay {
+  readonly baseLabel: string;
+  readonly targetLabel: string;
+  readonly diff: Diff;
+}
+
 interface VcsStore {
   readonly repo: Repo | null;
   readonly pending: PendingMerge | null;
+  readonly diffOverlay: DiffOverlay | null;
   readonly ensureRepo: () => void;
   readonly commitCurrent: (message: string) => void;
   readonly createBranch: (name: string) => void;
@@ -28,11 +41,19 @@ interface VcsStore {
   readonly setResult: (result: MergeResult) => void;
   readonly cancelMerge: () => void;
   readonly commitMerge: (message: string) => void;
+  readonly setDiff: (
+    base: Timeline,
+    baseLabel: string,
+    target: Timeline,
+    targetLabel: string,
+  ) => void;
+  readonly clearDiff: () => void;
 }
 
 export const useVcsStore = create<VcsStore>()((set, get) => ({
   repo: null,
   pending: null,
+  diffOverlay: null,
 
   ensureRepo: () => {
     if (get().repo !== null) return;
@@ -59,7 +80,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     const { repo } = get();
     if (repo === null) return;
     const next = checkout(repo, name);
-    set({ repo: next, pending: null });
+    set({ repo: next, pending: null, diffOverlay: null });
     useEditorStore.getState().loadTimeline(head(next).timeline);
   },
 
@@ -90,6 +111,13 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
 
   cancelMerge: () => set({ pending: null }),
 
+  setDiff: (base, baseLabel, target, targetLabel) =>
+    set({
+      diffOverlay: { baseLabel, targetLabel, diff: diffTimelines(base, target) },
+    }),
+
+  clearDiff: () => set({ diffOverlay: null }),
+
   commitMerge: (message) => {
     const { repo, pending } = get();
     if (repo === null || pending === null || !pending.result.clean) return;
@@ -98,7 +126,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
       head(repo).id,
       head(repo, pending.sourceBranch).id,
     ]);
-    set({ repo: merged, pending: null });
+    set({ repo: merged, pending: null, diffOverlay: null });
     editor.loadTimeline(pending.result.merged);
   },
 }));
