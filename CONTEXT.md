@@ -132,16 +132,18 @@ From Cardboard's hard-problems doc:
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
   malformed-clip rejection
 
-**Built, browser-tested (`apps/web`, uncommitted until now):**
+**Built, browser-tested (`apps/web`, committed through `79832e1`):**
 - Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
 - Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale
 - Player: `<video>` src swap at clip boundaries via pure `resolveActiveClip`, drift correction (never forced), next-clip preload with swap-stall logging, gap/missing-media states, edit-during-playback without loop restart
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
-- 13 web tests green (store, timeScale, playback), `tsc` clean, `vite build` succeeds
+- 13→21 web tests green (store, timeScale, playback, describeOp, vcs), `tsc` clean, `vite build` succeeds
 - Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as English with undo-dimming
-- Video upload: file picker → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1
+- Video upload: file picker → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1, including export/upload buttons
 - Git workflow (`vcs.ts` + store + UI): commits snapshotting timelines, branches as head pointers, checkout with dirty guard, merge with base-finding and per-conflict resolution (field/deleteModify/overlap), 2-parent merge commits
+- OTIO export button → downloads `.otio` for Premiere/Resolve/Blender (engine-side serializer with round-trip tests)
+- Perf harness page (`perf.html`) measuring engine ops + scrub click→paint, run headless on the dev machine
 
 **Not built:**
 - `apps/server` — empty. Sync, commits, blob store.
