@@ -2,6 +2,13 @@ import { type Clip, clipsOnTrack, timelineDuration } from "@cutroom/engine";
 import { useEffect, useRef, useState } from "react";
 import { nextClip, resolveActiveClip } from "../lib/playback";
 import { resolveAssetUrl } from "../lib/assets";
+import {
+  decideSwap,
+  decideWarm,
+  otherSide,
+  warmMatches,
+  type Side,
+} from "../lib/swap";
 import { useEditorStore } from "../store";
 
 /**
@@ -24,8 +31,7 @@ const PRELOAD_AHEAD_MS = 1_000;
 const READY_STATE_ENOUGH = 4;
 const SEEK_MATCH_TOLERANCE_MS = 120;
 
-type Side = "a" | "b";
-const otherSide = (side: Side): Side => (side === "a" ? "b" : "a");
+
 
 function firstVideoTrackId(timeline: {
   tracks: readonly { id: string; kind: string }[];
@@ -91,8 +97,7 @@ export function Player() {
       if (warmRef.current?.side === side) warmRef.current = null;
       return;
     }
-    const current = warmRef.current;
-    if (current !== null && current.side === side && current.assetId === next.assetId) {
+    if (warmMatches(warmRef.current, side, next.assetId)) {
       if (
         el.readyState >= READY_STATE_ENOUGH &&
         el.paused &&
@@ -164,18 +169,26 @@ export function Player() {
     const live = elementFor(side);
     if (live === null) return false;
 
-    if (loadedRef.current[side] !== active.clip.assetId) {
-      const warm = warmRef.current;
-      if (
-        warm !== null &&
-        warm.side !== side &&
-        warm.assetId === active.clip.assetId &&
-        (elementFor(warm.side)?.readyState ?? 0) >= READY_STATE_ENOUGH
-      ) {
-        swapToWarm(warm, active.sourceTimeMs, autoplay);
-      } else {
-        coldLoad(side, active.clip.assetId, url, active.sourceTimeMs, autoplay);
-      }
+    const warm = warmRef.current;
+    const decision = decideSwap(active.clip.assetId, {
+      liveSide: side,
+      loadedAsset: loadedRef.current,
+      warm:
+        warm === null
+          ? null
+          : {
+              side: warm.side,
+              assetId: warm.assetId,
+              elementReady:
+                (elementFor(warm.side)?.readyState ?? 0) >= READY_STATE_ENOUGH,
+            },
+    });
+    if (decision.kind === "flip" && warm !== null) {
+      swapToWarm(warm, active.sourceTimeMs, autoplay);
+      return true;
+    }
+    if (decision.kind === "coldLoad") {
+      coldLoad(decision.side, active.clip.assetId, url, active.sourceTimeMs, autoplay);
       return true;
     }
     if (!live.seeking) {
@@ -206,13 +219,19 @@ export function Player() {
       lastTick = now;
 
       const current = resolveActiveClip(clips, advanced);
-      if (current !== null) {
-        const next = nextClip(clips, current.clip);
-        const untilEnd =
-          current.clip.start + current.clip.duration - advanced;
-        if (next !== null && untilEnd < PRELOAD_AHEAD_MS) {
-          ensureWarm(next, () => undefined);
-        }
+      const next = current === null ? null : nextClip(clips, current.clip);
+      const untilEnd =
+        current === null
+          ? Number.POSITIVE_INFINITY
+          : current.clip.start + current.clip.duration - advanced;
+      const warmAction = decideWarm(
+        next?.assetId ?? null,
+        untilEnd,
+        { liveSide: liveSideRef.current, warm: warmRef.current },
+        { preloadEnabled, preloadAheadMs: PRELOAD_AHEAD_MS },
+      );
+      if (warmAction === "warm" && next !== null) {
+        ensureWarm(next, () => undefined);
       }
 
       if (!syncTo(advanced, true)) {
