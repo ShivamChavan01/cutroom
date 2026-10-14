@@ -1,85 +1,13 @@
 import { useEffect } from "react";
-import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
 import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
-import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
-import { ActivityFeed } from "./components/ActivityFeed";
-import { UploadButton, ExportOitioButton } from "./components/UploadButton";
-import { VersionControl } from "./components/VersionControl";
-import { registerAssetUrl } from "./lib/assets";
-import { useEditorStore, useSelection } from "./store";
-
-/**
- * Temporary seeding. Clips alternate between two assets so the §4
- * checkpoint (src swap at a boundary) is exercised on every crossing.
- * Drop two short mp4s at apps/web/public/test-a.mp4 and test-b.mp4
- * (gitignored, dev-only) to run the checkpoint with real media.
- */
-function seedTestClips() {
-  const { dispatch, loadTimeline } = useEditorStore.getState();
-  let base = emptyTimeline("demo");
-  base = putAsset(base, { id: "asset-a", kind: "video", duration: 60_000 });
-  base = putAsset(base, { id: "asset-b", kind: "video", duration: 60_000 });
-  loadTimeline(base);
-  registerAssetUrl("asset-a", "/test-a.mp4");
-  registerAssetUrl("asset-b", "/test-b.mp4");
-  const clips = [
-    { id: "a", start: 0, duration: 4_000, assetId: "asset-a" },
-    { id: "b", start: 4_000, duration: 3_000, assetId: "asset-b" },
-    { id: "c", start: 9_000, duration: 5_000, assetId: "asset-a" },
-    { id: "narr", start: 1_000, duration: 6_000, assetId: "asset-a", trackId: "a1" },
-  ];
-  for (const { id, start, duration, assetId, trackId } of clips) {
-    dispatch({
-      type: "addClip",
-      clip: makeClip({
-        id,
-        trackId: trackId ?? "v1",
-        assetId,
-        start,
-        inPoint: 0,
-        duration,
-        volume: 1,
-      }),
-    });
-  }
-}
-
-/** Dev-only §6 checkpoint: force an overlap the linter must flag. */
-function seedOverlap() {
-  const { dispatch } = useEditorStore.getState();
-  dispatch({
-    type: "addClip",
-    clip: makeClip({
-      id: "overlap-demo",
-      trackId: "v1",
-      assetId: "asset-a",
-      start: 2_000,
-      inPoint: 0,
-      duration: 2_000,
-      volume: 1,
-    }),
-  });
-}
-
-function splitAtPlayhead() {
-  const { timeline, selectedClipId, playheadMs, dispatch } =
-    useEditorStore.getState();
-  if (selectedClipId === null) return;
-  const clip = timeline.clips[selectedClipId];
-  if (clip === undefined) return;
-  // Engine op takes a clip-local offset; the UI thinks in timeline time.
-  const at = playheadMs - clip.start;
-  if (at <= 0 || at >= clip.duration) return;
-  dispatch({ type: "splitClip", clipId: selectedClipId, at });
-}
-
-function deleteSelected() {
-  const { selectedClipId, dispatch, selectClip } = useEditorStore.getState();
-  if (selectedClipId === null) return;
-  dispatch({ type: "deleteClip", clipId: selectedClipId });
-  selectClip(null);
-}
+import { TopBar } from "./components/TopBar";
+import { SidePanel } from "./components/SidePanel";
+import { Inspector } from "./components/Inspector";
+import { TransportBar } from "./components/TransportBar";
+import { deleteSelected, splitAtPlayhead } from "./lib/actions";
+import { useEditorStore } from "./store";
+import { theme } from "./theme";
 
 function isTypingTarget(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
@@ -91,22 +19,12 @@ function isTypingTarget(event: KeyboardEvent): boolean {
   );
 }
 
+/**
+ * Editor shell: preview center, drawers left, inspector right, timeline
+ * along the bottom. Same store, same shortcuts, same components as before —
+ * this file is layout only.
+ */
 export function App() {
-  const undo = useEditorStore((state) => state.undo);
-  const redo = useEditorStore((state) => state.redo);
-  const playheadMs = useEditorStore((state) => state.playheadMs);
-  const setZoom = useEditorStore((state) => state.setZoom);
-  const pxPerSecond = useEditorStore((state) => state.pxPerSecond);
-  const selection = useSelection();
-  const timeline = useEditorStore((state) => state.timeline);
-
-  const selectedClip =
-    selection !== null ? timeline.clips[selection] : undefined;
-  const canSplit =
-    selectedClip !== undefined &&
-    playheadMs > selectedClip.start &&
-    playheadMs < selectedClip.start + selectedClip.duration;
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event)) return;
@@ -136,58 +54,66 @@ export function App() {
   }, []);
 
   return (
-    <main
+    <div
       style={{
-        fontFamily: "system-ui, sans-serif",
-        padding: 24,
-        background: "#0b0c0e",
-        color: "#e9ecef",
-        minHeight: "100vh",
-        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: theme.bg,
+        color: theme.text,
+        fontFamily: theme.font,
+        overflow: "hidden",
       }}
     >
-      <h1 style={{ margin: "0 0 12px" }}>Cutroom</h1>
-      <Player />
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={seedTestClips}>Add test clips</button>
-        <UploadButton />
-        <ExportOitioButton />
-        <button onClick={seedOverlap}>Add overlapping clip (§6 demo)</button>
-        <button onClick={splitAtPlayhead} disabled={!canSplit} title="S">
-          Split at playhead
-        </button>
-        <button
-          onClick={deleteSelected}
-          disabled={selection === null}
-          title="Delete"
+      <TopBar />
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <aside
+          aria-label="panels"
+          style={{
+            width: 300,
+            flexShrink: 0,
+            borderRight: `1px solid ${theme.border}`,
+            background: theme.panel,
+            padding: 12,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
         >
-          Delete selected
-        </button>
-        <button onClick={undo}>Undo</button>
-        <button onClick={redo}>Redo</button>
-        <label style={{ fontSize: 12 }}>
-          Zoom{" "}
-          <input
-            type="range"
-            min={5}
-            max={400}
-            value={pxPerSecond}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
-        </label>
-        <span style={{ fontSize: 12, color: "#868e96" }}>
-          playhead {(playheadMs / 1000).toFixed(2)}s
-          {selection !== null ? ` · selected ${selection}` : ""}
-        </span>
+          <SidePanel />
+        </aside>
+        <main
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            padding: "12px 14px",
+            overflowY: "auto",
+          }}
+        >
+          <Player />
+          <TransportBar />
+          <Timeline />
+          <p style={{ fontSize: 11, color: theme.faint, margin: "10px 0 0" }}>
+            S split · Delete remove · Space play/pause · Ctrl+Z / Ctrl+Shift+Z
+            undo/redo. Drag clip edges to trim (one op on release).
+          </p>
+        </main>
+        <aside
+          aria-label="inspector"
+          style={{
+            width: 264,
+            flexShrink: 0,
+            borderLeft: `1px solid ${theme.border}`,
+            background: theme.panel,
+            padding: 12,
+            overflowY: "auto",
+          }}
+        >
+          <Inspector />
+        </aside>
       </div>
-      <Timeline />
-      <DiagnosticsPanel />
-      <ActivityFeed />
-      <VersionControl />
-      <p style={{ fontSize: 11, color: "#495057", marginTop: 12 }}>
-        Shortcuts: S split · Delete remove · Space play/pause · Ctrl+Z / Ctrl+Shift+Z undo/redo.
-        Drag clip edges to trim (one op on release).
-      </p>
-    </main>
+    </div>
   );
 }

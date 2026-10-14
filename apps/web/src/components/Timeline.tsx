@@ -5,6 +5,7 @@ import { createTimeScale } from "../lib/timeScale";
 import { useEditorStore, usePlayhead, useTrackIds } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { Track } from "./Track";
+import { TimeRuler } from "./TimeRuler";
 
 /** Trailing space so the last clip never sits flush against the edge. */
 const TAIL_MS = 5_000;
@@ -72,6 +73,20 @@ export function Timeline() {
       }}
     >
       <div style={{ position: "relative", width: laneWidth }}>
+        <TimeRuler scale={scale} width={laneWidth} />
+        {Object.keys(timeline.clips).length === 0 && (
+          <div
+            style={{
+              padding: "28px 12px",
+              textAlign: "center",
+              color: "#868e96",
+              fontSize: 13,
+            }}
+          >
+            No clips yet — upload a video or load the demo clips from the
+            Media tab to begin.
+          </div>
+        )}
         {/* Scrub strip first so it paints behind the clips; clip clicks hit
             ClipBlock (which stops propagation), empty-lane clicks land here. */}
         <div
