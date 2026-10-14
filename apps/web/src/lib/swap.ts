@@ -25,6 +25,33 @@ export function sameAsset(a: string | null, b: string): boolean {
   return a === b;
 }
 
+/**
+ * Do these two URL strings address the same source? Exists because element
+ * `src` always resolves absolute (`http://host/test-a.mp4`) while the asset
+ * registry hands out root-relative URLs (`/test-a.mp4`), so a naive `!==`
+ * is wrong on arrival — it reports "different" forever and every boundary
+ * cold-loads (this exact bug shipped once; see the test below).
+ *
+ * Rules: identical strings match; `blob:` URLs are opaque so only exact
+ * matches count; otherwise the registry URL is resolved against the
+ * element's own origin and origin + pathname must agree. Query strings and
+ * hashes are ignored — a cache-buster does not make it a different file.
+ */
+export function isSameSource(elementSrc: string, registryUrl: string): boolean {
+  if (elementSrc === registryUrl) return true;
+  if (elementSrc === "" || registryUrl === "") return false;
+  if (elementSrc.startsWith("blob:") || registryUrl.startsWith("blob:")) {
+    return false;
+  }
+  try {
+    const element = new URL(elementSrc);
+    const registry = new URL(registryUrl, element.origin);
+    return element.origin === registry.origin && element.pathname === registry.pathname;
+  } catch {
+    return false;
+  }
+}
+
 export interface WarmSlot {
   readonly side: Side;
   readonly assetId: string;

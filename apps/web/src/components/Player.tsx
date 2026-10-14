@@ -5,6 +5,7 @@ import { resolveAssetUrl } from "../lib/assets";
 import {
   decideSwap,
   decideWarm,
+  isSameSource,
   otherSide,
   warmMatches,
   type Side,
@@ -147,8 +148,16 @@ export function Player() {
   ): void => {
     const el = elementFor(side);
     if (el === null) return;
-    swapStartedAtRef.current = performance.now();
     loadedRef.current[side] = assetId;
+    if (isSameSource(el.src, url)) {
+      // Element already shows this source (e.g. refs reset under a live
+      // element): seek and go. Re-setting src would force a full reload.
+      // No stall starts here — nothing swapped.
+      el.currentTime = sourceTimeMs / 1000;
+      if (autoplay && el.paused) void el.play().catch(() => undefined);
+      return;
+    }
+    swapStartedAtRef.current = performance.now();
     el.src = url;
     el.onloadedmetadata = () => {
       el.currentTime = sourceTimeMs / 1000;
