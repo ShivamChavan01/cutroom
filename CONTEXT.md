@@ -118,8 +118,9 @@ From Cardboard's hard-problems doc:
   (added/removed/moved/trimmed/edited)
 - `packages/engine/src/merge.ts` — 3-way field merge + overlap pass,
   `resolveField`, `overlappingPairs`
-- 56 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
-  11, merge.test 13, lint.test 16), `tsc --noEmit` clean
+- 66 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
+  11, merge.test 13, lint.test 16, otio.test 10), `tsc --noEmit` clean.
+  (An older line in this file says 56 — stale, 66 is correct.)
 - `packages/engine/src/lint.ts` — Verification linter: `Diagnostic`,
   `Rule`, `defineRule` harness, `lint()` with include/exclude/severity
   overrides, 7 built-in rules (overlap, gap, missing-media, flash-frame,

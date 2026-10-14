@@ -60,10 +60,12 @@ export function Timeline() {
         {/* Scrub strip first so it paints behind the clips; clip clicks hit
             ClipBlock (which stops propagation), empty-lane clicks land here. */}
         <div
+          data-testid="scrub-strip"
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setPlayhead(scale.pxToTime(event.clientX - rect.left));
           }}
+          data-timeline-lane
           style={{ position: "absolute", inset: 0, cursor: "col-resize" }}
         />
         {trackIds.map((trackId) => (

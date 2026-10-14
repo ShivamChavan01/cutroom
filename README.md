@@ -1,228 +1,86 @@
 # Cutroom
 
-A browser video editor prototype built around two of Cardboard's named hard
-problems: **version control for video** and **verification (a linter for
-video)**.
+A browser-based video editor prototype built to answer two of Cardboard's
+own hard problems with working code instead of claims:
 
-Not an NLE. The timeline UI exists to demonstrate the workflows — branching,
-merging, conflict resolution, attribution, and automated checks — not to
-compete with Resolve. Deep editing stays in real tools: exports go to
-OpenTimelineIO (`.otio`), which Premiere, Resolve, Blender, and Kdenlive all
-read.
+1. **Version Control** — "Code has git. Video has nothing."
+2. **Verification** — "There's no linter for video. We have to build one."
 
-```
-You are here: the workflow layer. Branch, merge, verify, attribute — then
-finish in a real editor.
-```
+## What works
 
-## Why
+- **Timeline engine** (`packages/engine`, pure TypeScript, no DOM): clips in
+  an ID-keyed map, all edits through one `applyOp` reducer, op log with
+  cursor undo/redo, blame derived from the log.
+- **Diff + 3-way merge**: per-clip per-field merge, then a geometric overlap
+  sweep that catches collisions a per-clip merge cannot see. Overlaps are
+  surfaced, never auto-shifted. Delete-vs-edit is a conflict, not a silent
+  delete. Same-point splits on two branches converge (deterministic IDs).
+- **Linter**: `lint()` with a rule harness (`defineRule`) and 7 built-in
+  structural rules — overlap, gap, missing-media, flash-frame,
+  trim-past-source, zero-length, unused-asset. Severity is caller-assigned.
+- **Web UI** (`apps/web`): timeline rendering, `<video>` player with
+  double-buffered boundary swaps, split/trim/delete, blame dots, activity
+  feed, video upload (sha256 asset ids), and a git workflow — commits,
+  branches, checkout, merge with per-conflict resolution.
+- **OTIO export**: one click downloads `.otio` for Premiere / Resolve /
+  Blender (serializer + round-trip tests; open it in a real NLE to verify).
 
-Cardboard's [hard problems doc](https://www.usecardboard.com/hard-problems)
-poses the two questions this project answers with working, tested code:
+## Numbers
 
-> "What does a diff even look like for a timeline? How do you present a
-> conflict in a way an editor can resolve without friction?"
-
-> "There's no linter for video. We have to build one."
-
-Built by someone with strong systems/LLM background and no prior browser
-media experience, deliberately closing part of that gap in public. The
-engine is pure TypeScript, fully tested — the interesting parts are logic,
-not pixels.
-
-## Architecture
-
-```
-Browser                                    Server
-┌──────────────────────────────────┐        ┌──────────────────────┐
-│ UI (React)                        │        │ (not built yet)      │
-│  timeline, player, merge/conflict │        │  y-websocket relay   │
-│  diagnostics, activity feed, VCS  │        │  commit/branch API   │
-│      │                            │        │  content-addressed   │
-│ Store (Zustand) ── History ───────┼── Yjs ─┼──  blob store        │
-│      │  (op log + cursor)         │        └──────────────────────┘
-│ ENGINE (pure TS, no DOM, no React)│
-│  model · ops · diff · merge · lint│
-└──────────────────────────────────┘
-```
-
-- **`packages/engine`** — all timeline logic. No React, no DOM, no I/O.
-- **`apps/web`** — the UI. Never calls the engine's reducer directly; every
-  edit goes through the store, which is the single "local edit" call site.
-- **`apps/server`** — empty. Live collab is the next major piece.
-
-## How it works
-
-### The timeline is a clip-ID-keyed map, not an array
-
-In an array, "clip moved from index 2 to 5" and "clip deleted, similar clip
-inserted" produce identical state. Keyed by stable identity, position is a
-*field of the clip* (`start`), so a move diffs as a move. This one decision
-is what makes diff and merge tractable.
-
-### All state changes flow through one reducer
-
-Six ops — `addClip`, `splitClip`, `trimClip`, `moveClip`, `deleteClip`,
-`setVolume` — applied through a single `applyOp`, called from exactly the
-local-edit path (store). Invalid ops throw loudly: a silently dropped op is
-indistinguishable from a lost one three commits later.
-
-Split produces deterministic child IDs from (parent, split point, side).
-Two branches that split the same clip at the same frame converge on the
-same IDs instead of manufacturing a conflict — covered by tests.
-
-### Merge is two passes
-
-Pass 1: per-clip, per-field 3-way merge against a common ancestor
-(only-you-changed → take yours, both-changed-same → converged,
-both-changed-different → field conflict).
-
-Pass 2: geometric overlap sweep over the *merged result*. This pass is not
-redundant: branch A trims clip 1 to end at 10s, branch B moves clip 2 to
-start at 9s. No clip changed on both branches, so pass 1 reports zero
-conflicts — yet the merged timeline has a collision. Only pass 2 catches it.
-There is a test asserting pass 1 stays silent on exactly this case.
-
-**Overlaps are never auto-resolved by shifting clips.** Retiming someone's
-edit without asking is the one thing a video editor will not forgive.
-Conflicts are surfaced for explicit resolution: pick a side, or remove a
-clip. The merge UI cannot invent content the engine didn't produce.
-
-### The linter
-
-`lint(timeline) → diagnostics[]` — pure static analysis over timeline
-structure. Nine rules across two severities:
-
-| Rule | What it catches | Severity |
-|---|---|---|
-| `overlap` | two clips cover the same time on one track | error |
-| `gap` | dead air between consecutive clips | warning |
-| `missing-media` | clip references an unregistered asset | error |
-| `flash-frame` | clip under ~3 frames | warning |
-| `trim-past-source` | clip reads beyond its file's end | error |
-| `zero-length` | dead entry | error |
-| `unused-asset` | synced weight doing nothing | warning |
-
-Severity is assigned by the caller, so a proxy-first workflow can downgrade
-`missing-media` to a warning. Rules plug into a `defineRule` harness; a new
-rule is ten lines plus an id.
-
-This is layer 1 of Cardboard's verification problem — the deterministic,
-model-free half. Cardboard's full vision ("does the edit *look* good,
-matches the brand, holds a story arc") needs models and engagement data;
-that is out of scope here and not claimed.
-
-### Version control, git-shaped
-
-Commits snapshot whole timelines (they're small JSON). Branches are named
-pointers. Merges find the nearest common ancestor, run the two-pass merge,
-and record two parents. Resolution happens per conflict, explicitly:
-field → keep ours / take theirs; delete-vs-edit → keep / remove; overlap →
-keep one side. Committing a merge requires a clean result and a message.
-Assets ride in the commit's history base, so undo/redo never breaks.
-
-### Attribution is derived, never stored
-
-Every op carries an author. Blame ("last edited by X") and the activity
-feed ("Bob split a at +2.0s", with undone entries struck through) are
-derived from the op log by formatting it, so they cannot disagree with
-what was applied.
-
-### OTIO export
-
-`toOTIO()` serializes a timeline to the `.otio` JSON that Premiere, Resolve,
-Blender, and Kdenlive read. Round-trip is lossless for gap-free timelines;
-import drops gaps (no gap representation in our model) but reconstructs
-every clip's position and timing exactly. Content-addressed asset ids and
-per-clip volume ride in `metadata.cutroom` rather than being forced into
-fields that mean something else.
-
-**This is the point of the whole layer:** decide, branch, merge, and verify
-here — then finish anywhere.
-
-## Deliberate cuts
-
-- **No canvas/WebGL compositing.** Playback swaps `<video>` sources at clip
-  boundaries. A real compositor is a multi-week render pipeline.
-- **No viewport virtualization.** Fine at prototype scale; noted, not built.
-- **No pixel-level diff or merge.** Content edits become parameterized ops
-  or they don't exist. (Actively deferred, not claimed.)
-- **No server, no auth, no sync.** Live collab (Yjs) and the blob store are
-  the next major piece.
-- **No Rust/WASM.** The memory bottleneck is decoded media (native speed in
-  the browser); the timeline engine is small JSON. Rust enters for per-pixel
-  compute, which this build deliberately avoids.
-
-## Measured performance
-
-Real numbers from this repository, reproducible: `vitest bench` (engine)
-and the built-in headless harness at `/perf.html`
-(`node scripts/perf-drive.mjs`, drives system Chrome over CDP).
-
-### Engine (pure TypeScript, Node 26, mean per call)
+Engine ops, measured on the dev machine (`vitest bench`, see PERF.md):
 
 | op | 20 clips | 1,000 clips |
 |---|---|---|
-| `applyOp` | 0.0035 ms | 0.96 ms |
-| `diff` | 0.026 ms | 1.70 ms |
-| `merge` (clean) | — | 3.91 ms |
-| `lint` | 0.026 ms | 0.95 ms |
+| applyOp | 0.009 ms | 2.14 ms |
+| diff | 0.08 ms | 5.11 ms |
+| merge | — | ~10 ms |
+| lint | 0.11 ms | 3.10 ms |
 
-### Browser (headless Chrome 155, real components)
+Player stall and scrub latency: **pending headed-Chrome runs** — the
+protocol is in `apps/web/headed.html`, retired headless numbers are
+documented in PERF.md rather than cited.
 
-| measurement | mean | p99 |
-|---|---|---|
-| scrub click → first paint | 33.2 ms | 33.6 ms |
-| applyOp @ 20 clips | 0.005 ms | 0.10 ms |
-| applyOp @ 1,000 clips | 1.15 ms | 2.50 ms |
+## The CRDT / branch tradeoff, written down
 
-33 ms is two 60 Hz frames: one for the React commit, one for paint. The
-engine is never the bottleneck — scrub latency is dominated by the frame
-budget, not timeline logic. The player logs every boundary-swap stall
-(`[player] boundary swap stall: Nms` in the console) so boundary handoffs
-can be measured rather than assumed. Measured on a 2.4 MB → 9.2 MB cut on
-this machine: **1503 ms** of stall before the second clip's audio starts.
-The hidden-`<video>` preload of the next element did not hide that: the
-file still has to arrive and decode before it can play. Honest conclusion,
-and the spec's real mitigation: proxy-first sync — send a low-resolution
-preview, let the edit stay smooth, and upgrade in place. That mitigation
-is written down, not built yet (see CONTEXT.md).
+Live collab (Yjs-style CRDT) and version control (git-style branches) solve
+different problems and the boundary is deliberate: **CRDT auto-merge within
+a branch, explicit merge across branches.** A CRDT converges keystrokes;
+it cannot decide whose trim survives or whether an overlap is intentional.
+Those need a human, a diff view, and a resolve button — which is what the
+merge UI is. Collab infra (`apps/server`) is not built yet.
 
-**Known limitation:** numbers come from a 5.7 GB machine with small test
-files. Memory footprint and scrub behavior on 5–10 minute 720p timelines
-are measured, not assumed — see CONTEXT.md's status for what is proven
-vs. instrumented-but-unrun.
+## Deliberate cuts
 
-## Testing
-
-```
-packages/engine   66 tests   vitest run
-apps/web          21 tests   vitest run      (store, timeScale, playback, vcs, op narration)
-```
-
-Merge and lint cases are adversarial: the overlap case a per-clip merge
-misses, split convergence across branches, delete-vs-modify, concurrent
-adds, asset bounds, malformed clips.
+- **Multi-track compositing, transitions, effects rendering** — the player
+  swaps `<video>` sources at boundaries; no canvas/WebGL pipeline.
+- **Pixel-level diff/merge** — by design, never planned. The engine tracks
+  timeline structure; content edits must arrive as parameterized ops.
+- **Auth** — localStorage guest identity; presence-ready, login-free.
+- **Rust/WASM** — the engine is small JSON (see table); decoded media is
+  the memory cost and browsers already decode natively. Revisit for pixel
+  pipelines, not for this layer.
+- **Yjs live collab + server** — architecture sketched in CONTEXT.md,
+  not built.
 
 ## Run it
 
-```bash
+```sh
 pnpm install
-pnpm --filter @cutroom/engine test      # 66 tests
-pnpm --filter @cutroom/web test         # 21 tests
-pnpm --filter @cutroom/web dev          # http://localhost:5173
+# engine tests
+./node_modules/.bin/vitest run packages/engine
+# web tests
+./node_modules/.bin/vitest run apps/web
+# dev server (run vite directly; the pnpm wrapper trips on a build-approval check)
+cd apps/web && ./node_modules/.bin/vite --port 5173
 ```
 
-Try, in order: **Add test clips** → Play (watch boundary handoffs in the
-console) → select a clip, move the playhead, `S` to split → drag a clip
-edge to trim → commit → **Branch** → edit → commit → switch back → edit
-main → **Merge** → resolve a conflict → **Export .otio**.
+`pnpm install` prints an `ERR_PNPM_IGNORED_BUILDS` warning about esbuild —
+harmless; the platform binary installs as an optional dep and everything
+runs. Test media for the player checkpoint: drop two mp4s at
+`apps/web/public/test-a.mp4` / `test-b.mp4` (gitignored, dev-only).
 
-## CRDT vs. explicit merge — the tradeoff, stated plainly
+## Status
 
-Live collab inside a branch will be CRDT-style (Yjs): concurrent edits
-auto-merge because both users are moving toward the same cut together.
-Merging *across* branches is explicit and git-style. The boundary is
-deliberate: auto-merge is right when two people share one intent, wrong
-when a branch is a hypothesis that might lose. This is a real tension,
-not a solved problem, and the code doesn't pretend otherwise.
+87 tests green (66 engine + 21 web), `tsc --noEmit` clean. Honest
+accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
+(research notes), and PERF.md.
