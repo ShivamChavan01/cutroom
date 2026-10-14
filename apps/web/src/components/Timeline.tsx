@@ -98,9 +98,9 @@ export function Timeline() {
               fontSize: 14,
             }}
           >
-            <div style={{ marginBottom: 6 }}>Describe your edit, or drop footage here.</div>
+            <div style={{ marginBottom: 6 }}>Drop footage here to begin.</div>
             <div style={{ fontSize: 12 }}>
-              Upload a video to begin — every command compiles to engine ops.
+              Upload a video, then split, trim and arrange it on the timeline.
             </div>
           </div>
         )}

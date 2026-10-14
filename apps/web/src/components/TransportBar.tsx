@@ -1,4 +1,5 @@
-import { Redo2, Scissors, Trash2, Undo2 } from "lucide-react";
+import { Magnet, Redo2, Scissors, Trash2, Undo2 } from "lucide-react";
+import { closeGapsOps } from "../lib/closeGaps";
 import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
 import { useEditorStore, usePlayhead, useSelection } from "../store";
 import { formatTime } from "../theme";
@@ -28,6 +29,17 @@ export function TransportBar() {
       </Button>
       <Button size="sm" variant="ghost" onClick={redo} title="Ctrl+Shift+Z">
         <Redo2 /> Redo
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        title="Ripple-close every gap on every track"
+        onClick={() => {
+          const { timeline, dispatch } = useEditorStore.getState();
+          for (const op of closeGapsOps(timeline)) dispatch(op);
+        }}
+      >
+        <Magnet /> Close gaps
       </Button>
       <span className="flex-1" />
       {selection !== null && (
