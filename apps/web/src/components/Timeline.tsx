@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { authorsByClip, lint, timelineDuration } from "@cutroom/engine";
 import { diffToVisuals, type ClipVisual } from "../lib/diffView";
+import { uploadFiles } from "../lib/upload";
 import { createTimeScale } from "../lib/timeScale";
 import { useEditorStore, usePlayhead, useTrackIds } from "../store";
 import { useVcsStore } from "../vcsStore";
@@ -62,14 +63,28 @@ export function Timeline() {
     return out;
   }, [timeline]);
 
+  const [dragging, setDragging] = useState(false);
+
   return (
     <div
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        void uploadFiles(event.dataTransfer.files);
+      }}
       style={{
         overflowX: "auto",
         border: "1px solid #2c2e33",
         borderRadius: 6,
         background: "#101114",
         userSelect: "none",
+        outline: dragging ? "2px dashed #4dabf7" : "none",
+        outlineOffset: -2,
       }}
     >
       <div style={{ position: "relative", width: laneWidth }}>
@@ -77,14 +92,17 @@ export function Timeline() {
         {Object.keys(timeline.clips).length === 0 && (
           <div
             style={{
-              padding: "28px 12px",
+              padding: "36px 12px",
               textAlign: "center",
               color: "#868e96",
-              fontSize: 13,
+              fontSize: 14,
             }}
           >
-            No clips yet — upload a video or load the demo clips from the
-            Media tab to begin.
+            <div style={{ marginBottom: 6 }}>Describe your edit, or drop footage here.</div>
+            <div style={{ fontSize: 12 }}>
+              Upload a video, load the demo clips from the Media tab, or type
+              below — every command compiles to engine ops.
+            </div>
           </div>
         )}
         {/* Scrub strip first so it paints behind the clips; clip clicks hit

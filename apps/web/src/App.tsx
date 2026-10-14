@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
+import { CommandBar } from "./components/CommandBar";
 import { TopBar } from "./components/TopBar";
 import { SidePanel } from "./components/SidePanel";
 import { Inspector } from "./components/Inspector";
@@ -66,6 +67,9 @@ export function App() {
       }}
     >
       <TopBar />
+      <div style={{ display: "flex", justifyContent: "center", padding: "10px 14px 0" }}>
+        <CommandBar />
+      </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <aside
           aria-label="panels"
