@@ -220,8 +220,9 @@ From Cardboard's hard-problems doc:
       generation and cross-machine sync still open
 - [x] Real perf numbers: engine medians of 3 back-to-back `vitest bench`
       runs (2026-10-14) — applyOp 0.002 ms (20 clips) / 1.17 ms (1,000
-      clips), diff 0.012 / 0.75 ms, merge 2.07 clean / 3.09 conflict @1000,
-      lint 0.013 / 0.58 ms. Full per-run table in PERF.md. Player stall and
+      clips), diff 0.012 / 0.75 ms, merge 0.08 (20) / 5.75 clean / 5.32
+      conflict @1000 (re-measured after a bench fix; batch ran hot, see
+      PERF.md), lint 0.013 / 0.58 ms. Full per-run table in PERF.md. Player stall and
       scrub latency stay pending headed-Chrome runs; the 1503 ms stall and
       33 ms scrub figures are retired (see PERF.md for why). Still open:
       memory footprint on a genuine 5–10 min 720p timeline

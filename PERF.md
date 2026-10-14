@@ -12,11 +12,15 @@ see the bottom section before citing a number from an old commit message.
 |---|---|---|
 | applyOp | 0.002 ms | 1.17 ms |
 | diff | 0.012 ms | 0.75 ms |
-| merge (clean) | — | 2.07 ms |
-| merge (field conflict) | — | 3.09 ms |
+| merge (clean) | 0.08 ms | 5.75 ms |
+| merge (field conflict) | — | 5.32 ms |
 | lint | 0.013 ms | 0.58 ms |
 
-Per-run means (ms) — run 1 / run 2 / run 3:
+The applyOp/diff/lint medians are from the 2026-10-14 batch; the merge
+medians are from a second 2026-10-14 batch run after fixing the bench (see
+below). Per-run means (ms):
+
+Batch A (applyOp/diff/lint medians) — run 1 / run 2 / run 3:
 
 | op | run 1 | run 2 | run 3 |
 |---|---|---|---|
@@ -24,23 +28,33 @@ Per-run means (ms) — run 1 / run 2 / run 3:
 | applyOp @1000 | 1.17 | 0.93 | 1.17 |
 | diff @20 | 0.0122 | 0.0106 | 0.0118 |
 | diff @1000 | 0.76 | 0.74 | 0.75 |
-| merge clean @1000 | 2.38 | 2.07 | 2.05 |
-| merge conflict @1000 | 2.68 | 3.09 | 3.11 |
 | lint @20 | 0.0131 | 0.0125 | 0.0133 |
 | lint @1000 | 0.54 | 0.74 | 0.58 |
+
+Batch B (merge, fixed bench) — run 1 / run 2 / run 3:
+
+| op | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| merge clean @20 | 0.0585 | 0.0816 | 0.0847 |
+| merge clean @1000 | 4.97 | 5.75 | 6.56 |
+| merge conflict @1000 | 5.16 | 5.32 | 5.82 |
 
 On the 0.70 ms vs 2.14 ms applyOp@1000 spread from earlier runs: same file,
 same clip counts, same ops — vitest bench does its own warmup and adaptive
 iterations in all runs, so the setup is identical. The spread is noise, not
 method: this box is shared, per-run rme on the 1000-clip benches is ±5–9%,
-max samples spike to 10–38 ms (GC/contention), and today's own three runs
-already spread 0.93→1.17 (26%). 2.14 sits ~2x above today's median, consistent
-with heavier concurrent load during that run.
+max samples spike to 10–38 ms (GC/contention), and one batch's own three
+runs already spread 0.93→1.17 (26%). Batch B ran hotter across the board
+(applyOp@1000 1.34–1.63, diff@1000 ~3.0–3.3 vs 0.74–0.76 in batch A) —
+same code, heavier concurrent load. Merge medians are quoted from batch B
+as measured; expect ±2x run-to-run on this box.
 
-Caveat (kept, not silently fixed, so runs stay comparable): the field-
-conflict bench calls one extra `applyOps` trim *inside* the timed function
-(`engine.bench.ts` line 74), so that number includes ~1 ms of applyOp at
-1000 clips. True merge cost is roughly 1 ms lower than quoted.
+Bench fix (batch B): the field-conflict bench used to call one extra
+`applyOps` trim *inside* the timed function, so the old conflict number
+included ~1 ms of non-merge work. The setup is hoisted out now and only
+`mergeTimelines` is timed; a 20-clip clean merge was added following the
+same pattern as the other benches. Clip counts, warmup and iterations are
+unchanged.
 
 Reading: at prototype scale (tens of clips) every engine op is
 sub-millisecond — the engine is not the bottleneck. At 1,000 clips the

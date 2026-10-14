@@ -61,6 +61,11 @@ describe("diff", () => {
 });
 
 describe("merge", () => {
+  const smallOurs = applyOps(small, [{ type: "moveClip", clipId: "c2", start: 900 }]);
+  const smallTheirs = applyOps(small, [{ type: "moveClip", clipId: "c7", start: 900 }]);
+  bench("20 clips, clean merge", () => {
+    mergeTimelines(small, smallOurs, smallTheirs);
+  });
   const base = large;
   const ours = applyOps(base, [{ type: "moveClip", clipId: "c100", start: 900 }]);
   const theirs = applyOps(base, [{ type: "moveClip", clipId: "c300", start: 900 }]);
@@ -70,8 +75,11 @@ describe("merge", () => {
   const conflicting = applyOps(base, [
     { type: "trimClip", clipId: "c100", inPoint: 500 },
   ]);
+  const conflictingOurs = applyOps(base, [
+    { type: "trimClip", clipId: "c100", inPoint: 100 },
+  ]);
   bench("1000 clips, field conflict", () => {
-    mergeTimelines(base, applyOps(base, [{ type: "trimClip", clipId: "c100", inPoint: 100 }]), conflicting);
+    mergeTimelines(base, conflictingOurs, conflicting);
   });
 });
 

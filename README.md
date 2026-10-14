@@ -33,7 +33,8 @@ Engine ops, measured on the dev machine (`vitest bench`, see PERF.md):
 |---|---|---|
 | applyOp | 0.002 ms | 1.17 ms |
 | diff | 0.012 ms | 0.75 ms |
-| merge (clean / conflict) | — | 2.07 / 3.09 ms |
+| merge clean | 0.08 ms | 5.75 ms |
+| merge (field conflict) | — | 5.32 ms |
 | lint | 0.013 ms | 0.58 ms |
 
 Player stall and scrub latency: **pending headed-Chrome runs** — the
