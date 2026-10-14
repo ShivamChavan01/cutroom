@@ -10,7 +10,9 @@ import {
   warmMatches,
   type Side,
 } from "../lib/swap";
+import { Pause, Play } from "lucide-react";
 import { useEditorStore } from "../store";
+import { Button } from "./ui/button";
 
 /**
  * Double-buffered player.
@@ -370,7 +372,10 @@ export function Player() {
         )}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={toggle}>{isPlaying ? "Pause" : "Play"}</button>
+        <Button size="sm" onClick={toggle}>
+          {isPlaying ? <Pause /> : <Play />}
+          {isPlaying ? "Pause" : "Play"}
+        </Button>
         <span style={{ fontSize: 12, color: "#868e96", alignSelf: "center" }}>
           {activeNow !== null
             ? `${activeNow.clip.id} @ src ${(activeNow.sourceTimeMs / 1000).toFixed(2)}s`

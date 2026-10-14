@@ -15,6 +15,8 @@ import {
 import { authorColor } from "../lib/identity";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 function ConflictRow({
   conflict,
@@ -31,20 +33,20 @@ function ConflictRow({
         <span style={{ color: "#ffd43b" }}>[field]</span> {conflict.clipId}.
         {conflict.field}: ours {String(conflict.ours)} vs theirs{" "}
         {String(conflict.theirs)}{" "}
-        <button
+        <Button size="sm"
           onClick={() =>
             onResolve(resolveField(result, conflict.clipId, conflict.field, "ours"))
           }
         >
           Keep ours
-        </button>{" "}
-        <button
+        </Button>{" "}
+        <Button size="sm"
           onClick={() =>
             onResolve(resolveField(result, conflict.clipId, conflict.field, "theirs"))
           }
         >
           Take theirs
-        </button>
+        </Button>
       </li>
     );
   }
@@ -53,14 +55,14 @@ function ConflictRow({
       <li style={{ marginBottom: 6 }}>
         <span style={{ color: "#ff6b6b" }}>[delete-vs-edit]</span>{" "}
         {conflict.clipId} deleted on one side, edited on the other.{" "}
-        <button onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, true))}>
+        <Button size="sm" onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, true))}>
           Keep clip
-        </button>{" "}
-        <button
+        </Button>{" "}
+        <Button size="sm"
           onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, false))}
         >
           Remove clip
-        </button>
+        </Button>
       </li>
     );
   }
@@ -68,12 +70,12 @@ function ConflictRow({
     <li style={{ marginBottom: 6 }}>
       <span style={{ color: "#ff6b6b" }}>[overlap]</span> {conflict.a} and{" "}
       {conflict.b} collide on {conflict.trackId}.{" "}
-      <button onClick={() => onResolve(resolveOverlap(result, conflict.a, conflict.b))}>
+      <Button size="sm" onClick={() => onResolve(resolveOverlap(result, conflict.a, conflict.b))}>
         Keep {conflict.a}
-      </button>{" "}
-      <button onClick={() => onResolve(resolveOverlap(result, conflict.b, conflict.a))}>
+      </Button>{" "}
+      <Button size="sm" onClick={() => onResolve(resolveOverlap(result, conflict.b, conflict.a))}>
         Keep {conflict.b}
-      </button>
+      </Button>
     </li>
   );
 }
@@ -128,7 +130,7 @@ function DiffCompare({
           </option>
         ))}
       </select>
-      <button onClick={compare}>Compare</button>
+      <Button size="sm" onClick={compare}>Compare</Button>
       {diffOverlay !== null && (
         <>
           <span style={{ color: "#868e96" }}>
@@ -136,7 +138,7 @@ function DiffCompare({
             {diffOverlay.diff.added} added, {diffOverlay.diff.removed} removed,{" "}
             {diffOverlay.diff.changed} changed
           </span>
-          <button onClick={store.clearDiff}>Clear</button>
+          <Button size="sm" onClick={store.clearDiff}>Clear</Button>
         </>
       )}
     </div>
@@ -256,13 +258,13 @@ export function VersionControl() {
             ({dirty} uncommitted change{dirty === 1 ? "" : "s"})
           </span>
         )}
-        <input
+        <Input
           placeholder="new branch"
           value={branchName}
           onChange={(event) => setBranchName(event.target.value)}
           style={{ marginLeft: 8, width: 110 }}
         />
-        <button
+        <Button size="sm"
           onClick={() => {
             try {
               store.createBranch(branchName.trim());
@@ -273,17 +275,17 @@ export function VersionControl() {
           }}
         >
           Branch
-        </button>
+        </Button>
       </header>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <input
+        <Input
           placeholder="commit message"
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           style={{ flex: 1 }}
         />
-        <button
+        <Button size="sm"
           disabled={dirty === 0 || message.trim().length === 0}
           onClick={() => {
             store.commitCurrent(message.trim());
@@ -291,7 +293,7 @@ export function VersionControl() {
           }}
         >
           Commit
-        </button>
+        </Button>
       </div>
 
       <ul style={{ listStyle: "none", margin: "0 0 8px", padding: 0 }}>
@@ -337,7 +339,7 @@ export function VersionControl() {
                 </option>
               ))}
           </select>
-          <button
+          <Button size="sm"
             disabled={mergeSource === ""}
             onClick={() => {
               try {
@@ -348,7 +350,7 @@ export function VersionControl() {
             }}
           >
             Merge
-          </button>
+          </Button>
         </div>
       ) : (
         <div
@@ -376,13 +378,13 @@ export function VersionControl() {
             </ul>
           )}
           <div style={{ display: "flex", gap: 6 }}>
-            <input
+            <Input
               placeholder="merge commit message"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               style={{ flex: 1 }}
             />
-            <button
+            <Button size="sm"
               disabled={!pending.result.clean || message.trim().length === 0}
               onClick={() => {
                 store.commitMerge(message.trim());
@@ -390,8 +392,8 @@ export function VersionControl() {
               }}
             >
               Commit merge
-            </button>
-            <button onClick={store.cancelMerge}>Cancel</button>
+            </Button>
+            <Button size="sm" onClick={store.cancelMerge}>Cancel</Button>
           </div>
         </div>
       )}

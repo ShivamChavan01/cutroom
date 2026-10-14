@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { CornerDownLeft, Sparkle } from "lucide-react";
 import { HELP, parseCommand } from "../lib/commands";
 import { useEditorStore } from "../store";
-import { theme } from "../theme";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 /**
  * Prompt bar: "describe the edit" compiles to engine ops through a fixed
@@ -29,20 +31,10 @@ export function CommandBar({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: compact ? "100%" : 640 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: "#16181d",
-          border: `1px solid ${theme.border}`,
-          borderRadius: 10,
-          padding: "10px 14px",
-        }}
-      >
-        <span style={{ color: theme.dim }} aria-hidden>✦</span>
-        <input
+    <div className={compact ? "w-full" : "w-full max-w-2xl"}>
+      <div className="flex items-center gap-2 rounded-[10px] border border-border bg-[#16181d] px-3.5 py-2.5">
+        <Sparkle className="size-4 shrink-0 text-muted" aria-hidden />
+        <Input
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
@@ -54,45 +46,23 @@ export function CommandBar({ compact = false }: { compact?: boolean }) {
           }}
           placeholder="Describe the edit… (split here, close gaps, goto 12s)"
           aria-label="describe the edit"
-          style={{
-            flex: 1,
-            background: "transparent",
-            border: "none",
-            outline: "none",
-            color: theme.text,
-            fontSize: 14,
-          }}
+          className="border-0 bg-transparent px-0 focus:border-0"
         />
-        <button
-          onClick={() => submit(text)}
-          aria-label="run command"
-          style={{
-            borderRadius: 8,
-            padding: "4px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Run
-        </button>
+        <Button size="sm" onClick={() => submit(text)} aria-label="run command">
+          <CornerDownLeft />
+        </Button>
       </div>
-      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {["close gaps", "split here", "undo"].map((chip) => (
-          <button
-            key={chip}
-            onClick={() => submit(chip)}
-            style={{
-              fontSize: 12,
-              borderRadius: 12,
-              padding: "2px 12px",
-              cursor: "pointer",
-            }}
-          >
+          <Button key={chip} size="sm" variant="outline" className="rounded-full" onClick={() => submit(chip)}>
             {chip}
-          </button>
+          </Button>
         ))}
-        <span style={{ fontSize: 11, color: theme.faint }} title={HELP}>
-          {feedback === null ? "fixed grammar, no guessing" : (
-            <span style={{ color: feedback.ok ? theme.ok : theme.error }}>
+        <span className="text-[11px] text-faint" title={HELP}>
+          {feedback === null ? (
+            "fixed grammar, no guessing"
+          ) : (
+            <span className={feedback.ok ? "text-success" : "text-destructive"}>
               {feedback.message}
             </span>
           )}

@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { authorsByClip, lint } from "@cutroom/engine";
+import { Scissors, Trash2 } from "lucide-react";
 import { authorColor } from "../lib/identity";
 import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
+import { Button } from "./ui/button";
 import { useEditorStore, useSelection } from "../store";
 import { formatTime, theme } from "../theme";
 
@@ -66,8 +68,12 @@ export function Inspector() {
             <Row label="Source" value={clip.assetId.slice(0, 12)} />
             <Row label="Volume" value={String(clip.volume)} />
             <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              <button onClick={splitAtPlayhead} title="S">Split at playhead</button>
-              <button onClick={deleteSelected} title="Delete">Delete</button>
+              <Button size="sm" onClick={splitAtPlayhead} title="S">
+                <Scissors /> Split at playhead
+              </Button>
+              <Button size="sm" variant="destructive" onClick={deleteSelected} title="Delete">
+                <Trash2 /> Delete
+              </Button>
             </div>
             {!canSplitAtPlayhead() && (
               <p style={{ fontSize: 11, color: theme.faint, margin: "6px 0 0" }}>
@@ -94,22 +100,6 @@ export function Inspector() {
         )}
       </section>
 
-      <section
-        style={{
-          border: `1px dashed ${theme.border}`,
-          borderRadius: theme.radius,
-          padding: "8px 10px",
-        }}
-      >
-        <h3 style={{ margin: "0 0 6px", fontSize: 12, color: theme.dim, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Agent
-        </h3>
-        <p style={{ fontSize: 12, color: theme.dim, margin: 0 }}>
-          AI edits land here as proposed ops once an API key is configured.
-          The engine stays the source of truth — the model narrates or
-          proposes, never mutates directly.
-        </p>
-      </section>
     </div>
   );
 }

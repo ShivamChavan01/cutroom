@@ -1,6 +1,8 @@
+import { Redo2, Scissors, Trash2, Undo2 } from "lucide-react";
 import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
 import { useEditorStore, usePlayhead, useSelection } from "../store";
-import { formatTime, theme } from "../theme";
+import { formatTime } from "../theme";
+import { Button } from "./ui/button";
 
 /** Transport row under the preview: time, edit actions, undo, zoom. */
 export function TransportBar() {
@@ -12,32 +14,26 @@ export function TransportBar() {
   const playheadMs = usePlayhead();
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 0",
-        flexWrap: "wrap",
-      }}
-    >
-      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
-        {formatTime(playheadMs)}
-      </span>
-      <span style={{ color: theme.faint, fontSize: 12 }}>|</span>
-      <button onClick={splitAtPlayhead} disabled={!canSplitAtPlayhead()} title="S">
-        Split
-      </button>
-      <button onClick={deleteSelected} disabled={selection === null} title="Delete">
-        Delete
-      </button>
-      <button onClick={undo} title="Ctrl+Z">Undo</button>
-      <button onClick={redo} title="Ctrl+Shift+Z">Redo</button>
-      <span style={{ flex: 1 }} />
+    <div className="flex flex-wrap items-center gap-2 py-1.5">
+      <span className="font-mono text-[13px]">{formatTime(playheadMs)}</span>
+      <span className="text-xs text-faint">|</span>
+      <Button size="sm" onClick={splitAtPlayhead} disabled={!canSplitAtPlayhead()} title="S">
+        <Scissors /> Split
+      </Button>
+      <Button size="sm" onClick={deleteSelected} disabled={selection === null} title="Delete">
+        <Trash2 /> Delete
+      </Button>
+      <Button size="sm" variant="ghost" onClick={undo} title="Ctrl+Z">
+        <Undo2 /> Undo
+      </Button>
+      <Button size="sm" variant="ghost" onClick={redo} title="Ctrl+Shift+Z">
+        <Redo2 /> Redo
+      </Button>
+      <span className="flex-1" />
       {selection !== null && (
-        <span style={{ fontSize: 12, color: theme.dim }}>{selection}</span>
+        <span className="font-mono text-xs text-muted">{selection}</span>
       )}
-      <label style={{ fontSize: 12, color: theme.dim }}>
+      <label className="text-xs text-muted">
         Zoom{" "}
         <input
           type="range"
@@ -45,7 +41,7 @@ export function TransportBar() {
           max={400}
           value={pxPerSecond}
           onChange={(event) => setZoom(Number(event.target.value))}
-          style={{ verticalAlign: "middle" }}
+          className="align-middle"
         />
       </label>
     </div>

@@ -1,7 +1,8 @@
+import { Download, Upload } from "lucide-react";
 import { ExportOitioButton, UploadButton } from "./UploadButton";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
-import { theme } from "../theme";
+import { Badge } from "./ui/badge";
 
 /** Top strip: identity, branch, primary actions. Nothing decorative. */
 export function TopBar() {
@@ -9,40 +10,13 @@ export function TopBar() {
   const branch = useVcsStore((state) => state.repo?.currentBranch ?? "—");
 
   return (
-    <header
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 14px",
-        borderBottom: `1px solid ${theme.border}`,
-        background: theme.panel,
-        flexShrink: 0,
-      }}
-    >
-      <span style={{ fontWeight: 700, fontSize: 15 }}>
-        Cutroom
-      </span>
-      <span
-        title="Current branch"
-        style={{
-          fontSize: 12,
-          color: theme.dim,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: "1px 10px",
-          fontFamily: "ui-monospace, monospace",
-        }}
-      >
-        ⎇ {branch}
-      </span>
-      <span style={{ flex: 1 }} />
-      <UploadButton />
-      <ExportOitioButton />
-      <span
-        title="Local author identity"
-        style={{ fontSize: 12, color: theme.dim }}
-      >
+    <header className="flex shrink-0 items-center gap-2.5 border-b border-border bg-card px-3.5 py-2">
+      <span className="text-[15px] font-bold">Cutroom</span>
+      <Badge title="Current branch">⎇ {branch}</Badge>
+      <span className="flex-1" />
+      <UploadButton icon={<Upload />} label="Add video" />
+      <ExportOitioButton icon={<Download />} />
+      <span title="Local author identity" className="text-xs text-muted">
         {authorId}
       </span>
     </header>

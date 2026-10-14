@@ -4,7 +4,6 @@ import { ActivityFeed } from "./ActivityFeed";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { UploadButton, ExportOitioButton } from "./UploadButton";
 import { VersionControl } from "./VersionControl";
-import { seedOverlap, seedTestClips } from "../lib/actions";
 import { useEditorStore } from "../store";
 import { formatTime, theme } from "../theme";
 
@@ -21,7 +20,7 @@ function MediaTab() {
       </div>
       {entries.length === 0 ? (
         <p style={{ fontSize: 12, color: theme.dim, margin: 0 }}>
-          No media yet. Upload a video, or load the demo clips to explore.
+          No media yet. Upload a video to begin.
         </p>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -47,13 +46,6 @@ function MediaTab() {
           ))}
         </ul>
       )}
-      <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>
-        <div style={{ fontSize: 11, color: theme.faint, marginBottom: 6 }}>Demo</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button onClick={seedTestClips}>Test clips</button>
-          <button onClick={seedOverlap}>Overlap demo</button>
-        </div>
-      </div>
     </div>
   );
 }

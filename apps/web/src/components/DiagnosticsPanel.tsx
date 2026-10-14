@@ -44,15 +44,11 @@ export function DiagnosticsPanel() {
                   }
                   selectClip(diagnostic.clipIds[0] ?? null);
                 }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  color: diagnostic.severity === "error" ? "#ff6b6b" : "#ffd43b",
-                  fontSize: 12,
-                  textAlign: "left",
-                }}
+                className={
+                  diagnostic.severity === "error"
+                    ? "cursor-pointer bg-transparent text-left text-[12px] text-destructive hover:underline"
+                    : "cursor-pointer bg-transparent text-left text-[12px] text-warn hover:underline"
+                }
               >
                 [{diagnostic.rule}] {diagnostic.message}
               </button>
