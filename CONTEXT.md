@@ -136,23 +136,51 @@ From Cardboard's hard-problems doc:
 **Built, browser-tested (`apps/web`, committed through `79832e1`):**
 - Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
 - Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale
-- Player: `<video>` src swap at clip boundaries via pure `resolveActiveClip`, drift correction (never forced), next-clip preload with swap-stall logging, gap/missing-media states, edit-during-playback without loop restart
+- Player: double-buffered `<video>` pair — hidden element warmed to
+  `readyState >= 4` on inPoint ~1s before each boundary, roles flip at the
+  cut, swap decisions (`decideSwap`/`decideWarm` in `lib/swap.ts`) unit-tested
+  (14 tests). Replaced an earlier single-element design whose preload was a
+  verified no-op. Stall metric: boundary tick → new element's `playing`
+  event, logged `(preload on/off)`; headed measurement still pending
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
-- 13→21 web tests green (store, timeScale, playback, describeOp, vcs), `tsc` clean, `vite build` succeeds
+- 41 web tests green (store, timeScale, playback, describeOp, vcs,
+  swap policy, diffView mapping), `tsc` clean, `vite build` succeeds
 - Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as English with undo-dimming
 - Video upload: file picker → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1, including export/upload buttons
 - Git workflow (`vcs.ts` + store + UI): commits snapshotting timelines, branches as head pointers, checkout with dirty guard, merge with base-finding and per-conflict resolution (field/deleteModify/overlap), 2-parent merge commits
 - OTIO export button → downloads `.otio` for Premiere/Resolve/Blender (engine-side serializer with round-trip tests)
-- Perf harness page (`perf.html`) measuring engine ops + scrub click→paint, run headless on the dev machine
+- Perf harness pages: `perf.html` (engine ops in a browser JS runtime only)
+  and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
+  lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
+  Engine bench medians in PERF.md; every player number pending headed runs
+
+## Known issues (match reality, not older notes)
+
+- **Old preload was a no-op — retired, fix shipped unmeasured.** The first
+  player warmed a separate hidden element nothing ever consumed (no
+  `readyState`/`loadeddata`/`seeked` check anywhere on the swap path). The
+  double-buffered rewrite replaces it; swap policy is unit-tested, but no
+  headed measurement exists yet, so no stall claim is made.
+- **1503 ms boundary swap stall — retired, headed re-measure pending.**
+  Real measurement, wrong setup (headless Chrome, software decode, cold
+  9.2 MB fetch, src-assign → `playing` timer). Superseded, not cited
+  anywhere except PERF.md's retired section.
+- **33 ms scrub click-to-paint — retired.** Measured against a stand-in
+  div, never the real timeline. The synthetic lane is deleted; scrub is
+  measured against `[data-timeline-lane]` in `headed.html`, pending runs.
+- **Every headed number stays "pending"** until real headed-Chrome runs are
+  pasted in. No display is available in this environment, so none are quoted.
 
 **Not built:**
 - `apps/server` — empty. Sync, commits, blob store.
 - Version Control presentation layer: branches, commits, checkout,
   conflict-resolution UI ("resolve without friction" half of Cardboard's
-  question).
-- Verification (linter): DONE in the engine (`lint.ts`). Remaining is the
-  UI rendering of diagnostics (squiggles/markers on the timeline).
+  question) — branch/commit/checkout/merge UI DONE; colour-coded diff view
+  DONE as tints + ghosts + moved links; ghost-clip *conflict* rendering on
+  the timeline still open.
+- Verification (linter): DONE in the engine (`lint.ts`); diagnostics
+  rendering DONE (clip markers + panel with click-to-jump).
 - Effect ops (`applyFilter`, `setCaption`, ...): discussed, not built.
   Design agreed: content edits as parameterized ops so the agent's output
   flows through the existing log/diff/merge machinery. Rendering them needs
@@ -165,8 +193,9 @@ From Cardboard's hard-problems doc:
   frames; pixel edits, filters, grades are invisible unless expressed as
   parameterized ops (not yet built). No pixel-level diff/merge — by design,
   never planned.
-- `history.ts` is a linear undo log, not version control. No branches,
-  commits, or history graph exist yet.
+- `history.ts` is a linear undo log, not version control. Branches,
+  commits, and merge history exist only in the web `vcs.ts` layer
+  (in-memory, not persisted); the engine itself has no history graph.
 
 ## Remaining plan
 
