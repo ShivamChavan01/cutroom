@@ -70,6 +70,29 @@ Run each 3+ times, take the median of the `boundary swap stall` lines and
 the `scrub click->paint (real lane)` line. Headed only — headless Chrome
 decodes video in software and inflates every video timing (see Retired).
 
+## Pending: long-clip memory + scrub (script ready, run pending)
+
+`scripts/make-test-media.sh` generates the media (ffmpeg 6.1 verified
+present on the dev machine; the script checks and refuses otherwise):
+
+```sh
+./scripts/make-test-media.sh 600   # 10 min 720p30 + sine tone, ~100-200 MB
+```
+
+Output lands at `apps/web/public/test-long.mp4`, which is gitignored
+(`*.mp4`) and must stay uncommitted. Then, headed:
+
+```sh
+google-chrome --autoplay-policy=no-user-gesture-required \
+  "http://localhost:5173/headed.html?auto=1&clip=long"
+```
+
+The harness probes the real duration, seeds one full-length clip, records
+JS heap before load / after load / after ~2 min of scrubbing (60 real-lane
+clicks across the clip) + 60 s of playback, and prints the scrub summary
+plus any stalls. Paste back the `#results` block and the heap lines;
+until then the memory footprint stays labelled unmeasured.
+
 ## Retired numbers (do not cite)
 
 - **1503 ms boundary swap stall.** Real measurement, wrong setup: headless

@@ -22,6 +22,12 @@ import { useEditorStore } from "./store";
  *   google-chrome --autoplay-policy=no-user-gesture-required \
  *     "http://localhost:5173/headed.html?auto=1&preload=off"   # preload off
  *
+ * Long-clip memory/scrub run (needs scripts/make-test-media.sh output at
+ * apps/web/public/test-long.mp4 first — gitignored, never committed):
+ *
+ *   google-chrome --autoplay-policy=no-user-gesture-required \
+ *     "http://localhost:5173/headed.html?auto=1&clip=long"
+ *
  * Repeat each 3+ times, take the median. Results render into #results and
  * document.title flips to HEADED-DONE when finished.
  */
@@ -69,6 +75,154 @@ function clickLaneAt(clientX: number, clientY: number): void {
   lane.dispatchEvent(
     new MouseEvent("click", { bubbles: true, clientX, clientY }),
   );
+}
+
+interface ChromeMemory {
+  readonly usedJSHeapSize: number;
+}
+
+/** JS heap in MB, or null outside Chromium. GC timing means this is a
+ *  snapshot, not a leak proof — take all three readings to tell the story. */
+function heapMB(): number | null {
+  const memory = (performance as unknown as { memory?: ChromeMemory }).memory;
+  return memory === undefined ? null : memory.usedJSHeapSize / 1048576;
+}
+
+function probeDurationMs(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => resolve(Math.round(video.duration * 1000));
+    video.onerror = () =>
+      reject(
+        new Error(
+          `${url} did not load — run ./scripts/make-test-media.sh first`,
+        ),
+      );
+    video.src = url;
+  });
+}
+
+/**
+ * One real-lane click measured to the painted frame after it. Resolves null
+ * when the click misses (never hangs: 1 s cap per click).
+ */
+function measureClick(targetMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    const lane = document.querySelector("[data-timeline-lane]");
+    if (lane === null) {
+      resolve(null);
+      return;
+    }
+    const rect = lane.getBoundingClientRect();
+    const pxPerSecond = useEditorStore.getState().pxPerSecond;
+    const previous = useEditorStore.getState().playheadMs;
+    const startedAt = performance.now();
+    let done = false;
+    const finish = (value: number | null): void => {
+      if (done) return;
+      done = true;
+      unsubscribe();
+      resolve(value);
+    };
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      if (state.playheadMs === previous) return;
+      unsubscribe();
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => finish(performance.now() - startedAt)),
+      );
+    });
+    lane.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        clientX: rect.left + (targetMs / 1000) * pxPerSecond,
+        clientY: rect.top + 10,
+      }),
+    );
+    window.setTimeout(() => finish(null), 1000);
+  });
+}
+
+async function sweep(targets: readonly number[]): Promise<number[]> {
+  const samples: number[] = [];
+  for (const target of targets) {
+    const sample = await measureClick(target);
+    if (sample !== null) samples.push(sample);
+  }
+  return samples;
+}
+
+/**
+ * Long-clip run: heap before load, after load, and after ~2 minutes of
+ * scrubbing + playing a 5–10 min 720p clip. Reports heap deltas (the
+ * memory story) and scrub latency on a real-length timeline.
+ */
+async function runLongClip(): Promise<string[]> {
+  const lines: string[] = [];
+  const heapBefore = heapMB();
+  lines.push(
+    `heap before load: ${heapBefore === null ? "n/a (non-Chromium?)" : `${heapBefore.toFixed(1)} MB`}`,
+  );
+
+  const duration = await probeDurationMs("/test-long.mp4");
+  lines.push(`long clip duration: ${(duration / 1000).toFixed(0)}s`);
+  const store = useEditorStore.getState();
+  let base = emptyTimeline("headed-long");
+  base = putAsset(base, { id: "asset-long", kind: "video", duration });
+  store.loadTimeline(base);
+  registerAssetUrl("asset-long", "/test-long.mp4");
+  store.dispatch({
+    type: "addClip",
+    clip: makeClip({
+      id: "long", trackId: "v1", assetId: "asset-long",
+      start: 0, inPoint: 0, duration, volume: 1,
+    }),
+  });
+  store.setZoom(5);
+  await new Promise((r) => window.setTimeout(r, 2000));
+  const heapAfterLoad = heapMB();
+  lines.push(
+    `heap after load: ${heapAfterLoad === null ? "n/a" : `${heapAfterLoad.toFixed(1)} MB`}`,
+  );
+
+  // ~60 scrub clicks spread across the clip, ~1 s apart.
+  const targets = Array.from({ length: 60 }, (_, i) =>
+    Math.round((duration * (i + 1)) / 61),
+  );
+  const scrub = await sweep(targets);
+  lines.push(summarize("scrub click->paint, long clip (real lane)", scrub));
+
+  // 60 s of playback from 10% in.
+  window.__stalls = [];
+  store.setPlayhead(Math.round(duration * 0.1));
+  await new Promise((r) => window.setTimeout(r, 500));
+  store.play();
+  await new Promise<void>((resolve) => {
+    const startedAt = Date.now();
+    const check = (): void => {
+      const state = useEditorStore.getState();
+      if (!state.isPlaying || Date.now() - startedAt > 65_000) {
+        state.pause();
+        resolve();
+        return;
+      }
+      window.setTimeout(check, 500);
+    };
+    check();
+  });
+  const heapAfterStress = heapMB();
+  lines.push(
+    heapAfterStress === null
+      ? "heap after ~2 min scrub+play: n/a"
+      : `heap after ~2 min scrub+play: ${heapAfterStress.toFixed(1)} MB`,
+  );
+  const stalls = window.__stalls ?? [];
+  lines.push(
+    stalls.length > 0
+      ? `stalls during long play: ${stalls.map((s) => s.ms.toFixed(0)).join(", ")}ms`
+      : "stalls during long play: none (single clip, no boundary)",
+  );
+  return lines;
 }
 
 function measureRealScrub(): Promise<number[]> {
@@ -157,20 +311,24 @@ export function HeadedHarness() {
     }
     void (async () => {
       try {
-        seedTwoAssetTimeline();
-        // Let React commit the seeded timeline before measuring.
-        await new Promise((r) => window.setTimeout(r, 500));
-        const scrub = await measureRealScrub();
-        const stalls = await playAcrossBoundary();
-        const out = [
-          summarize("scrub click->paint (real lane)", scrub),
-          stalls.length > 0
-            ? stalls
-                .map((s) => `boundary swap stall (${s.mode}): ${s.ms.toFixed(0)}ms`)
-                .join("\n")
-            : "boundary swap stall: no samples (playback did not cross?)",
-        ];
-        setLines(out);
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("clip") === "long") {
+          setLines(await runLongClip());
+        } else {
+          seedTwoAssetTimeline();
+          // Let React commit the seeded timeline before measuring.
+          await new Promise((r) => window.setTimeout(r, 500));
+          const scrub = await measureRealScrub();
+          const stalls = await playAcrossBoundary();
+          setLines([
+            summarize("scrub click->paint (real lane)", scrub),
+            stalls.length > 0
+              ? stalls
+                  .map((s) => `boundary swap stall (${s.mode}): ${s.ms.toFixed(0)}ms`)
+                  .join("\n")
+              : "boundary swap stall: no samples (playback did not cross?)",
+          ]);
+        }
         document.title = "HEADED-DONE";
       } catch (err) {
         setLines([`ERROR: ${err instanceof Error ? err.message : String(err)}`]);
