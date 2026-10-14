@@ -31,10 +31,10 @@ Engine ops, measured on the dev machine (`vitest bench`, see PERF.md):
 
 | op | 20 clips | 1,000 clips |
 |---|---|---|
-| applyOp | 0.009 ms | 2.14 ms |
-| diff | 0.08 ms | 5.11 ms |
-| merge | — | ~10 ms |
-| lint | 0.11 ms | 3.10 ms |
+| applyOp | 0.002 ms | 1.17 ms |
+| diff | 0.012 ms | 0.75 ms |
+| merge (clean / conflict) | — | 2.07 / 3.09 ms |
+| lint | 0.013 ms | 0.58 ms |
 
 Player stall and scrub latency: **pending headed-Chrome runs** — the
 protocol is in `apps/web/headed.html`, retired headless numbers are
