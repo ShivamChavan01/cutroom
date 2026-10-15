@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
+import { CommandPalette } from "./components/CommandPalette";
+import { StatusBar } from "./components/StatusBar";
 import { TopBar } from "./components/TopBar";
 import { SidePanel } from "./components/SidePanel";
 import { Inspector } from "./components/Inspector";
@@ -66,6 +68,7 @@ export function App() {
       }}
     >
       <TopBar />
+      <CommandPalette />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <aside
           aria-label="panels"
@@ -95,10 +98,6 @@ export function App() {
           <Player />
           <TransportBar />
           <Timeline />
-          <p style={{ fontSize: 11, color: theme.faint, margin: "10px 0 0" }}>
-            S split · Delete remove · Space play/pause · Ctrl+Z / Ctrl+Shift+Z
-            undo/redo. Drag clip edges to trim (one op on release).
-          </p>
         </main>
         <aside
           aria-label="inspector"
@@ -114,6 +113,7 @@ export function App() {
           <Inspector />
         </aside>
       </div>
+      <StatusBar />
     </div>
   );
 }

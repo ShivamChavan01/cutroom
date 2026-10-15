@@ -372,7 +372,7 @@ export function Player() {
         )}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <Button size="sm" onClick={toggle}>
+        <Button size="sm" variant="default" onClick={toggle}>
           {isPlaying ? <Pause /> : <Play />}
           {isPlaying ? "Pause" : "Play"}
         </Button>

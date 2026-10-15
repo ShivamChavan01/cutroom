@@ -4,9 +4,10 @@ import { describeOp } from "../lib/describeOp";
 import { authorColor } from "../lib/identity";
 
 /**
- * The op log, rendered as English. Reads history directly — never the
- * timeline — so it shows what happened, including entries undone since
- * (dimmed past the cursor). Newest at the bottom, auto-follows.
+ * The op log as a session transcript: one row per op, newest at the
+ * bottom, auto-following — the shape Claude Code users already read.
+ * Status glyph per row: ✓ applied, ↩ undone (dimmed past the cursor).
+ * Reads history directly, never the timeline.
  */
 export function ActivityFeed() {
   const history = useEditorStore((state) => state.history);
@@ -20,12 +21,9 @@ export function ActivityFeed() {
     return (
       <section
         aria-label="activity"
-        style={{
-          border: "1px solid #2c2e33", borderRadius: 6, background: "#101114",
-          padding: "8px 12px", marginTop: 12, fontSize: 12, color: "#868e96",
-        }}
+        className="rounded-md border border-border bg-card p-3 font-mono text-xs text-muted"
       >
-        No edits yet — every op will appear here with its author.
+        <span className="text-faint">$</span> no ops yet — every edit lands here with its author.
       </section>
     );
   }
@@ -33,39 +31,30 @@ export function ActivityFeed() {
   return (
     <section
       aria-label="activity"
-      style={{
-        border: "1px solid #2c2e33", borderRadius: 6, background: "#101114",
-        padding: "8px 12px", marginTop: 12, fontSize: 12,
-        maxHeight: 160, overflowY: "auto",
-      }}
+      className="max-h-64 overflow-y-auto rounded-md border border-border bg-card p-3 font-mono text-xs"
     >
-      <header style={{ color: "#868e96", marginBottom: 6 }}>
-        Activity — who made what
+      <header className="mb-1.5 text-muted">
+        <span className="text-faint">$</span> session — {history.log.length} op{history.log.length === 1 ? "" : "s"}
       </header>
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      <ul className="m-0 list-none p-0">
         {history.log.map((entry, index) => {
           const undone = index >= history.cursor;
           return (
             <li
               key={entry.seq}
-              style={{
-                marginBottom: 3,
-                opacity: undone ? 0.4 : 1,
-                textDecoration: undone ? "line-through" : "none",
-              }}
+              className={undone ? "mb-1 opacity-40" : "mb-1"}
             >
+              <span className={undone ? "text-faint" : "text-success"} aria-hidden>
+                {undone ? "↩ " : "✓ "}
+              </span>
               <span
-                style={{
-                  display: "inline-block", width: 8, height: 8,
-                  borderRadius: "50%", marginRight: 6,
-                  background: authorColor(entry.author),
-                }}
+                className="mr-1.5 inline-block size-2 rounded-full"
+                style={{ background: authorColor(entry.author) }}
+                title={entry.author}
               />
-              <span style={{ color: "#e9ecef" }}>{entry.author}</span>
-              <span style={{ color: "#868e96" }}> {describeOp(entry.op)}</span>
-              {undone && (
-                <span style={{ color: "#868e96" }}> (undone)</span>
-              )}
+              <span className="text-foreground">{entry.author}</span>{" "}
+              <span className="text-muted">{describeOp(entry.op)}</span>
+              <span className="text-faint"> #{entry.seq}</span>
             </li>
           );
         })}
