@@ -13,10 +13,13 @@ import {
   commit,
   createBranch,
   createRepo,
+  currentCommit,
   findMergeBase,
   head,
+  isDetached,
   resolveDeleteModify,
   resolveOverlap,
+  viewCommit,
 } from "./vcs";
 
 function timelineWithClip(id: string, start: number) {
@@ -32,6 +35,56 @@ function timelineWithClip(id: string, start: number) {
     },
   ]);
 }
+
+describe("viewing a commit (detached HEAD)", () => {
+  it("checks out a commit so its timeline can be watched", () => {
+    let repo = createRepo(timelineWithClip("a", 0), "alice");
+    repo = commit(repo, timelineWithClip("a", 5_000), "second", "alice");
+
+    const viewed = viewCommit(repo, "c0");
+    expect(isDetached(viewed)).toBe(true);
+    expect(viewed.detachedAt).toBe("c0");
+    // The snapshot is the one that was committed, not the branch tip.
+    expect(currentCommit(viewed).timeline.clips.a?.start).toBe(0);
+    expect(currentCommit(viewed).id).toBe("c0");
+  });
+
+  it("returns to the branch on checkout, clearing the detached state", () => {
+    let repo = createRepo(timelineWithClip("a", 0), "alice");
+    repo = commit(repo, timelineWithClip("a", 5_000), "second", "alice");
+    const viewed = viewCommit(repo, "c0");
+    const back = checkout(viewed, "main");
+
+    expect(isDetached(back)).toBe(false);
+    expect(back.detachedAt).toBeNull();
+    expect(currentCommit(back).id).toBe("c1");
+  });
+
+  it("refuses to commit while detached", () => {
+    let repo = createRepo(timelineWithClip("a", 0), "alice");
+    repo = commit(repo, timelineWithClip("a", 5_000), "second", "alice");
+    const viewed = viewCommit(repo, "c0");
+
+    expect(() =>
+      commit(viewed, timelineWithClip("a", 1_000), "from detached", "alice"),
+    ).toThrow(/detached HEAD/);
+  });
+
+  it("branches off the viewed commit, not the branch tip", () => {
+    let repo = createRepo(timelineWithClip("a", 0), "alice");
+    repo = commit(repo, timelineWithClip("a", 5_000), "second", "alice");
+    const viewed = viewCommit(repo, "c0");
+    const branched = createBranch(viewed, "from-old");
+
+    // Git semantics: the new branch starts where HEAD was.
+    expect(branched.branches["from-old"]).toBe("c0");
+  });
+
+  it("rejects an unknown commit", () => {
+    const repo = createRepo(timelineWithClip("a", 0), "alice");
+    expect(() => viewCommit(repo, "nope")).toThrow(/no commit/);
+  });
+});
 
 describe("vcs", () => {
   it("commits move the current branch head", () => {
@@ -93,8 +146,7 @@ describe("vcs", () => {
     expect(ancestors(repo, head(repo).id).sort()).toEqual(["c0", "c1"]);
   });
 
-  it("settles delete-modify by keeping or removing the survivor", () => {
-    const base = timelineWithClip("a", 0);
+  it("settles delete-modify by keeping or removing the survivor", () => {    const base = timelineWithClip("a", 0);
     const deleted = applyOps(base, [{ type: "deleteClip", clipId: "a" }]);
     const edited = applyOps(base, [
       { type: "trimClip", clipId: "a", inPoint: 500 },

@@ -14,6 +14,7 @@ import {
   createRepo,
   findMergeBase,
   head,
+  viewCommit as viewCommitRepo,
 } from "./lib/vcs";
 import { useEditorStore } from "./store";
 
@@ -37,6 +38,8 @@ interface VcsStore {
   readonly commitCurrent: (message: string) => void;
   readonly createBranch: (name: string) => void;
   readonly checkoutBranch: (name: string) => void;
+  /** Check out a specific commit (detached HEAD) and show its timeline. */
+  readonly viewCommit: (commitId: string) => void;
   readonly beginMerge: (sourceBranch: string) => void;
   readonly setResult: (result: MergeResult) => void;
   readonly cancelMerge: () => void;
@@ -65,9 +68,14 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     const { repo } = get();
     if (repo === null) return;
     const editor = useEditorStore.getState();
-    set({
-      repo: commitToRepo(repo, editor.timeline, message, editor.authorId),
-    });
+    try {
+      set({
+        repo: commitToRepo(repo, editor.timeline, message, editor.authorId),
+      });
+    } catch {
+      // Detached HEAD: committing is blocked (git behaves the same way —
+      // you must pick a branch or name a new one first).
+    }
   },
 
   createBranch: (name) => {
@@ -84,9 +92,22 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     useEditorStore.getState().loadTimeline(head(next).timeline);
   },
 
+  viewCommit: (commitId) => {
+    const { repo } = get();
+    if (repo === null) return;
+    const next = viewCommitRepo(repo, commitId);
+    set({ repo: next, pending: null, diffOverlay: null });
+    // Load the snapshot so the old version is actually watchable.
+    const commit = next.commits[commitId];
+    if (commit !== undefined) {
+      useEditorStore.getState().loadTimeline(commit.timeline);
+    }
+  },
+
   beginMerge: (sourceBranch) => {
     const { repo } = get();
     if (repo === null || sourceBranch === repo.currentBranch) return;
+    if (repo.detachedAt !== null) return; // merge from a branch, not a commit
     const editor = useEditorStore.getState();
     const ours = head(repo);
     const theirs = head(repo, sourceBranch);

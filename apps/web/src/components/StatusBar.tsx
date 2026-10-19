@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { diffTimelines } from "@cutroom/engine";
-import { head } from "../lib/vcs";
+import { currentCommit } from "../lib/vcs";
 import { useEditorStore, usePlayhead } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { formatTime } from "../theme";
@@ -14,23 +14,32 @@ export function StatusBar() {
   const dirty = useMemo(() => {
     if (repo === null) return 0;
     try {
-      return diffTimelines(head(repo).timeline, timeline).changes.length;
+      return diffTimelines(currentCommit(repo).timeline, timeline).changes.length;
     } catch {
       return 0;
     }
   }, [repo, timeline]);
 
   const clips = Object.keys(timeline.clips).length;
+  const detached = repo?.detachedAt ?? null;
 
   return (
     <footer className="flex shrink-0 items-center gap-4 border-t border-border bg-card px-3.5 py-1.5 font-mono text-[11px] text-muted">
-      <span title="Current branch">⎇ {repo?.currentBranch ?? "—"}</span>
+      {detached !== null ? (
+        <span className="text-[#d97757]" title="Detached HEAD — viewing a specific commit">
+          ⎇ detached at {detached}
+        </span>
+      ) : (
+        <span title="Current branch">⎇ {repo?.currentBranch ?? "—"}</span>
+      )}
       {dirty > 0 ? (
-        <span className="text-warn" title="Uncommitted changes vs branch head">
+        <span className="text-warn" title="Uncommitted changes vs the checked-out commit">
           ● {dirty} uncommitted
         </span>
       ) : (
-        <span className="text-success" title="Working copy matches branch head">✓ clean</span>
+        <span className="text-success" title="Working copy matches the checked-out commit">
+          ✓ clean
+        </span>
       )}
       <span title="Clips on the timeline">
         {clips} clip{clips === 1 ? "" : "s"}

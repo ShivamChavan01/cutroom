@@ -27,6 +27,11 @@ export interface Repo {
   readonly commits: Readonly<Record<string, Commit>>;
   readonly branches: Readonly<Record<string, string>>;
   readonly currentBranch: string;
+  /**
+   * Detached HEAD: viewing a specific commit instead of a branch tip.
+   * Git's model — you can look at any commit, and going back is a checkout.
+   */
+  readonly detachedAt: string | null;
 }
 
 export function createRepo(initial: Timeline, author: string): Repo {
@@ -42,6 +47,7 @@ export function createRepo(initial: Timeline, author: string): Repo {
     commits: { c0: root },
     branches: { main: "c0" },
     currentBranch: "main",
+    detachedAt: null,
   };
 }
 
@@ -49,6 +55,36 @@ export function head(repo: Repo, branch?: string): Commit {
   const commit = repo.commits[repo.branches[branch ?? repo.currentBranch] ?? ""];
   if (commit === undefined) throw new Error("vcs: branch has no head");
   return commit;
+}
+
+/**
+ * The commit currently checked out: the detached one when viewing a
+ * specific commit, otherwise the current branch's tip. Everything that
+ * compares "where am I" to "what's committed" goes through this.
+ */
+export function currentCommit(repo: Repo): Commit {
+  if (repo.detachedAt !== null) {
+    const commit = repo.commits[repo.detachedAt];
+    if (commit !== undefined) return commit;
+  }
+  return head(repo);
+}
+
+/** True when HEAD is detached — commits are blocked until you pick a branch. */
+export function isDetached(repo: Repo): boolean {
+  return repo.detachedAt !== null;
+}
+
+/**
+ * Check out a specific commit: detached HEAD pointing at it. The editor
+ * then shows that snapshot, so an old version can actually be watched and
+ * compared, not just listed.
+ */
+export function viewCommit(repo: Repo, commitId: string): Repo {
+  if (repo.commits[commitId] === undefined) {
+    throw new Error(`vcs: no commit ${commitId}`);
+  }
+  return { ...repo, detachedAt: commitId };
 }
 
 function nextId(repo: Repo): string {
@@ -72,13 +108,16 @@ export function commit(
   author: string,
   parents?: readonly string[],
 ): Repo {
+  if (isDetached(repo)) {
+    throw new Error("vcs: detached HEAD — check out a branch before committing");
+  }
   const commit: Commit = {
     id: nextId(repo),
     message,
     author,
     at: Date.now(),
     timeline,
-    parents: parents ?? [head(repo).id],
+    parents: parents ?? [currentCommit(repo).id],
   };
   return withCommit(repo, commit, repo.currentBranch);
 }
@@ -88,14 +127,17 @@ export function createBranch(repo: Repo, name: string): Repo {
   if (repo.branches[name] !== undefined) {
     throw new Error(`vcs: branch ${name} already exists`);
   }
-  return { ...repo, branches: { ...repo.branches, [name]: head(repo).id } };
+  return {
+    ...repo,
+    branches: { ...repo.branches, [name]: currentCommit(repo).id },
+  };
 }
 
 export function checkout(repo: Repo, name: string): Repo {
   if (repo.branches[name] === undefined) {
     throw new Error(`vcs: no branch ${name}`);
   }
-  return { ...repo, currentBranch: name };
+  return { ...repo, currentBranch: name, detachedAt: null };
 }
 
 /** All ancestors of a commit, inclusive, newest-first by BFS depth. */

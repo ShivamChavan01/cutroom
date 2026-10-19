@@ -8,6 +8,7 @@ import {
 import {
   type Repo,
   branchHistory,
+  currentCommit,
   head,
   resolveDeleteModify,
   resolveOverlap,
@@ -204,7 +205,9 @@ export function VersionControl() {
   const dirty = useMemo(() => {
     if (repo === null) return 0;
     try {
-      return diffTimelines(head(repo).timeline, timeline).changes.length;
+      // Compare against whatever is checked out: the branch tip normally,
+      // the viewed commit while detached.
+      return diffTimelines(currentCommit(repo).timeline, timeline).changes.length;
     } catch {
       return 0;
     }
@@ -243,16 +246,29 @@ export function VersionControl() {
     >
       <header style={{ color: "#868e96", marginBottom: 6 }}>
         Version control —{" "}
-        <select
-          value={repo.currentBranch}
-          onChange={(event) => checkoutGuarded(event.target.value)}
-        >
-          {branches.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>{" "}
+        {repo.detachedAt !== null ? (
+          <span style={{ color: "#d97757" }}>
+            detached at {repo.detachedAt}{" "}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => store.checkoutBranch(repo.currentBranch)}
+            >
+              back to {repo.currentBranch}
+            </Button>
+          </span>
+        ) : (
+          <select
+            value={repo.currentBranch}
+            onChange={(event) => checkoutGuarded(event.target.value)}
+          >
+            {branches.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}{" "}
         {dirty > 0 && (
           <span style={{ color: "#ffd43b" }}>
             ({dirty} uncommitted change{dirty === 1 ? "" : "s"})
@@ -286,7 +302,12 @@ export function VersionControl() {
           style={{ flex: 1 }}
         />
         <Button size="sm"
-          disabled={dirty === 0 || message.trim().length === 0}
+          disabled={dirty === 0 || message.trim().length === 0 || repo.detachedAt !== null}
+          title={
+            repo.detachedAt !== null
+              ? "Detached HEAD — check out a branch to commit"
+              : undefined
+          }
           onClick={() => {
             store.commitCurrent(message.trim());
             setMessage("");
@@ -297,22 +318,51 @@ export function VersionControl() {
       </div>
 
       <ul style={{ listStyle: "none", margin: "0 0 8px", padding: 0 }}>
-        {history.map((commit) => (
-          <li key={commit.id} style={{ marginBottom: 3 }}>
-            <span
-              style={{
-                display: "inline-block", width: 8, height: 8,
-                borderRadius: "50%", marginRight: 6,
-                background: authorColor(commit.author),
-              }}
-            />
-            <code>{commit.id}</code> {commit.message}{" "}
-            <span style={{ color: "#868e96" }}>
-              — {commit.author}
-              {commit.parents.length > 1 ? ` (merge of ${commit.parents.join(" + ")})` : ""}
-            </span>
-          </li>
-        ))}
+        {history.map((commit) => {
+          const viewing = repo.detachedAt === commit.id;
+          return (
+            <li key={commit.id} style={{ marginBottom: 3 }}>
+              <button
+                onClick={() => store.viewCommit(commit.id)}
+                title={`Check out ${commit.id} and view its timeline`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  width: "100%",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  background: viewing ? "#23262c" : "transparent",
+                  border: viewing ? "1px solid #2c2e33" : "1px solid transparent",
+                  borderRadius: 4,
+                  padding: "2px 6px",
+                  fontSize: 12,
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-block", width: 8, height: 8,
+                    borderRadius: "50%",
+                    background: authorColor(commit.author),
+                  }}
+                />
+                <code>{commit.id}</code>
+                <span style={{ color: "#e9ecef" }}>{commit.message}</span>
+                <span style={{ color: "#868e96" }}>
+                  — {commit.author}
+                  {commit.parents.length > 1
+                    ? ` (merge of ${commit.parents.join(" + ")})`
+                    : ""}
+                </span>
+                {viewing && (
+                  <span style={{ marginLeft: "auto", color: "#d97757" }}>
+                    viewing
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
 
       <DiffCompare
