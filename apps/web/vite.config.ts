@@ -14,7 +14,6 @@ export default defineConfig({
         main: here("./index.html"),
         perf: here("./perf.html"),
         headed: here("./headed.html"),
-        scenarios: here("./scenarios.html"),
       },
     },
   },
