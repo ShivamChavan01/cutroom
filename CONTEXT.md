@@ -119,8 +119,7 @@ From Cardboard's hard-problems doc:
 - `packages/engine/src/merge.ts` — 3-way field merge + overlap pass,
   `resolveField`, `overlappingPairs`
 - 66 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
-  11, merge.test 13, lint.test 16, otio.test 10), `tsc --noEmit` clean.
-  (An older line in this file says 56 — stale, 66 is correct.)
+  11, merge.test 13, lint.test 16, otio.test 10), `tsc --noEmit` clean
 - `packages/engine/src/lint.ts` — Verification linter: `Diagnostic`,
   `Rule`, `defineRule` harness, `lint()` with include/exclude/severity
   overrides, 7 built-in rules (overlap, gap, missing-media, flash-frame,
@@ -133,9 +132,9 @@ From Cardboard's hard-problems doc:
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
   malformed-clip rejection
 
-**Built, browser-tested (`apps/web`, committed through `79832e1`):**
+**Built, browser-tested (`apps/web`, committed through `9c6de39`):**
 - Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
-- Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale
+- Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale, time ruler
 - Player: double-buffered `<video>` pair — hidden element warmed to
   `readyState >= 4` on inPoint ~1s before each boundary, roles flip at the
   cut, swap decisions (`decideSwap`/`decideWarm` in `lib/swap.ts`) unit-tested
@@ -144,16 +143,31 @@ From Cardboard's hard-problems doc:
   event, logged `(preload on/off)`; headed measurement still pending
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
-- 41 web tests green (store, timeScale, playback, describeOp, vcs,
-  swap policy, diffView mapping), `tsc` clean, `vite build` succeeds
-- Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as English with undo-dimming
-- Video upload: file picker → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1, including export/upload buttons
+- Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as a session transcript (✓ applied / ↩ undone, author dots, `#seq`)
+- Video upload: file picker + timeline drop zone → sha256 asset id → duration probe → `addAsset` (rides history base, log untouched) → clip appended on V1
 - Git workflow (`vcs.ts` + store + UI): commits snapshotting timelines, branches as head pointers, checkout with dirty guard, merge with base-finding and per-conflict resolution (field/deleteModify/overlap), 2-parent merge commits
+- **Commit checkout (detached HEAD)**: click any commit to check it out and
+  watch that snapshot — the timeline rewinds to it and plays. Commit is
+  blocked while detached (git semantics), branches can fork off a viewed
+  commit, `back to <branch>` returns. 5 tests cover the semantics.
+- Colour-coded diff view on the timeline: added/removed/moved/trimmed/edited
+  each get a tint *and* a text cue, removed clips render as dashed ghosts at
+  their old position, moved clips get a link from old to new. Triggered by
+  comparing any two commits/branches or against the working copy
 - OTIO export button → downloads `.otio` for Premiere/Resolve/Blender (engine-side serializer with round-trip tests)
+- UI shell: top bar, left drawers (Media/Versions/Activity/Issues), right
+  inspector, bottom status line, Ctrl+K command palette (fuzzy filter,
+  unit-tested), shadcn-style primitives + Tailwind v4 + lucide icons.
+  Claude-Code-inspired language: warm orange accent, monospace transcript,
+  keyboard-first. Demo seeders and the placeholder "agent" panel were
+  removed as fake UI — nothing in the product is a mock.
 - Perf harness pages: `perf.html` (engine ops in a browser JS runtime only)
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
+- 65 web tests green (store, timeScale, playback, describeOp, vcs, swap
+  policy, diffView mapping, palette), `tsc` clean, `vite build` succeeds.
+  Total 131 across the workspace.
 
 ## Known issues (match reality, not older notes)
 
@@ -199,20 +213,24 @@ From Cardboard's hard-problems doc:
 
 ## Remaining plan
 
-- [ ] Effect ops in the engine (agent-edit representation)
-- [x] Verification linter in the engine (`lint()` + rules + tests) — DONE (`598af3d`), UI rendering still open
+- [x] Verification linter in the engine (`lint()` + rules + tests) — DONE
+      (`598af3d`); UI rendering of diagnostics DONE (markers + panel)
 - [x] Effect ops in the engine (agent-edit representation) — DEFERRED until
       the player exists to render them; structural ops already work
 - [x] Timeline UI + player: render clips, scrub, split/trim/delete via the
       engine, swap `<video>` src at clip boundaries, preload next clip — DONE
-      (`ae853b2`)
+      (`ae853b2`); double-buffered swap shipped later (`79c86c9`)
 - [x] Web Worker for thumbnails/waveform (keep scrubbing smooth) — DEFERRED,
       not needed at prototype scale
-- [x] Commit/branch UI + clip-level diff view on the timeline — branch/commit/
-      checkout/merge UI DONE (`79832e1`); colour-coded diff view still open
+- [x] Commit/branch UI + clip-level diff view on the timeline — DONE
+      (`79832e1` branches/commit/checkout/merge; `d85bfea` colour-coded diff
+      view with ghosts and moved links)
+- [x] Commit checkout (detached HEAD) + watch that snapshot — DONE
+      (`9c6de39`); commit blocked while detached, branches fork off a viewed
+      commit
 - [x] Conflict UI: field conflicts and overlaps as resolvable ghost clips —
-      DONE as a resolution list (`79832e1`); ghost-clip rendering on the
-      timeline still open
+      DONE as a resolution list (`79832e1`); ghost-clip *conflict* rendering
+      on the timeline still open
 - [x] Yjs live collab between two tabs, presence (cursor, playhead, author color)
       — DEFERRED, needs `apps/server` first; identity plumbing already in
 - [x] Content-addressed asset upload + proxy-first sync + "not local yet"
@@ -230,11 +248,12 @@ From Cardboard's hard-problems doc:
       merge conflicts into plain English; lint fix suggestions. Engine stays
       the source of truth — the model narrates or proposes ops, never mutates
       the timeline directly
-- [ ] OTIO (`.otio`) export: the workflow-interchange bridge so a merged
+- [x] OTIO (`.otio`) export: the workflow-interchange bridge so a merged
       timeline can be finished in Premiere/Resolve. Serialiser + round-trip
       tests, no new UI
 - [ ] README with numbers, CRDT/branch tradeoff, deliberate cuts
-      (multi-track, effects rendering, auth)
+      (multi-track, effects rendering, auth) — README.md written; numbers
+      need the headed run to be final
 - [ ] Demo video
 
 ## Application connection
