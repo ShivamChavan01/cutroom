@@ -1,15 +1,15 @@
 import { useEffect } from "react";
 import { Timeline } from "./components/Timeline";
 import { Player } from "./components/Player";
+import { ActivityBar } from "./components/ActivityBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatusBar } from "./components/StatusBar";
 import { TopBar } from "./components/TopBar";
-import { SidePanel } from "./components/SidePanel";
 import { Inspector } from "./components/Inspector";
-import { TransportBar } from "./components/TransportBar";
+import { SidePanel } from "./components/SidePanel";
+import { Panel, ResizableGroup, ResizeHandle } from "./components/ResizableGroup";
 import { deleteSelected, splitAtPlayhead } from "./lib/actions";
 import { useEditorStore } from "./store";
-import { theme } from "./theme";
 
 function isTypingTarget(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
@@ -22,9 +22,15 @@ function isTypingTarget(event: KeyboardEvent): boolean {
 }
 
 /**
- * Editor shell: preview center, drawers left, inspector right, timeline
- * along the bottom. Same store, same shortcuts, same components as before —
- * this file is layout only.
+ * Editor shell.
+ *
+ *   TopBar
+ *   ├─ ActivityBar (icon rail) │ centre │ Inspector
+ *   ├─ workspace group: [centre column: preview / editor tabs] │ inspector
+ *   ├─ Bottom panel (Issues / Activity)
+ *   └─ StatusBar
+ *
+ * All four groups are resizable and their sizes persist per group id.
  */
 export function App() {
   useEffect(() => {
@@ -56,63 +62,64 @@ export function App() {
   }, []);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        background: theme.bg,
-        color: theme.text,
-        fontFamily: theme.font,
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TopBar />
       <CommandPalette />
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <aside
-          aria-label="panels"
-          style={{
-            width: 300,
-            flexShrink: 0,
-            borderRight: `1px solid ${theme.border}`,
-            background: theme.panel,
-            padding: 12,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <SidePanel />
-        </aside>
-        <main
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            padding: "12px 14px",
-            overflowY: "auto",
-          }}
-        >
-          <Player />
-          <TransportBar />
-          <Timeline />
-        </main>
-        <aside
-          aria-label="inspector"
-          style={{
-            width: 264,
-            flexShrink: 0,
-            borderLeft: `1px solid ${theme.border}`,
-            background: theme.panel,
-            padding: 12,
-            overflowY: "auto",
-          }}
-        >
-          <Inspector />
-        </aside>
-      </div>
+      <ResizableGroup
+        groupId="workspace"
+        orientation="vertical"
+        panelIds={["workspace", "bottom"]}
+        defaultLayout={{ workspace: 74, bottom: 26 }}
+        minSize={20}
+      >
+        <Panel id="workspace" minSize={30}>
+          <div className="flex h-full min-h-0">
+            <ActivityBar />
+            <ResizableGroup
+              groupId="shell"
+              orientation="horizontal"
+              panelIds={["centre", "inspector"]}
+              defaultLayout={{ centre: 78, inspector: 22 }}
+              minSize={12}
+            >
+              <Panel id="centre" minSize={40}>
+                <ResizableGroup
+                  groupId="centre"
+                  orientation="vertical"
+                  panelIds={["preview", "editor"]}
+                  defaultLayout={{ preview: 46, editor: 54 }}
+                  minSize={15}
+                >
+                  <Panel id="preview" minSize={20}>
+                    <div className="h-full overflow-y-auto p-3">
+                      <Player />
+                    </div>
+                  </Panel>
+                  <ResizeHandle orientation="horizontal" />
+                  <Panel id="editor" minSize={20}>
+                    <div className="h-full overflow-auto p-3">
+                      <Timeline />
+                    </div>
+                  </Panel>
+                </ResizableGroup>
+              </Panel>
+              <ResizeHandle orientation="vertical" />
+              <Panel id="inspector" minSize={14}>
+                <aside
+                  aria-label="inspector"
+                  className="h-full overflow-y-auto border-l border-border bg-card p-3"
+                >
+                  <Inspector />
+                </aside>
+              </Panel>
+            </ResizableGroup>
+          </div>
+        </Panel>
+        <ResizeHandle orientation="horizontal" />
+        <Panel id="bottom" minSize={8}>
+          <div className="h-full border-t border-border bg-card" />
+        </Panel>
+      </ResizableGroup>
       <StatusBar />
     </div>
   );

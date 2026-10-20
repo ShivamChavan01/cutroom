@@ -1,15 +1,12 @@
-import { useMemo, useState } from "react";
-import { lint } from "@cutroom/engine";
-import { ActivityFeed } from "./ActivityFeed";
-import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { UploadButton, ExportOitioButton } from "./UploadButton";
 import { VersionControl } from "./VersionControl";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useEditorStore } from "../store";
-import { formatTime, theme } from "../theme";
+import { formatTime } from "../theme";
+import { useUiStore } from "../uiStore";
+import { Button } from "./ui/button";
 
-type Tab = "media" | "versions" | "activity" | "issues";
-
-function MediaTab() {
+function MediaPanel() {
   const assets = useEditorStore((state) => state.timeline.assets);
   const entries = Object.values(assets);
   return (
@@ -19,7 +16,7 @@ function MediaTab() {
         <ExportOitioButton />
       </div>
       {entries.length === 0 ? (
-        <p style={{ fontSize: 12, color: theme.dim, margin: 0 }}>
+        <p style={{ fontSize: 12, color: "#868e96", margin: 0 }}>
           No media yet. Upload a video to begin.
         </p>
       ) : (
@@ -30,17 +27,19 @@ function MediaTab() {
               style={{
                 fontSize: 12,
                 padding: "6px 8px",
-                border: `1px solid ${theme.border}`,
-                borderRadius: theme.radius,
+                border: "1px solid #2c2e33",
+                borderRadius: 6,
                 marginBottom: 6,
               }}
             >
               <div style={{ fontFamily: "ui-monospace, monospace" }}>
                 {asset.id.slice(0, 16)}
               </div>
-              <div style={{ color: theme.dim, fontSize: 11 }}>
+              <div style={{ color: "#868e96", fontSize: 11 }}>
                 {asset.kind} · {formatTime(asset.duration)}
-                {asset.bytes !== undefined ? ` · ${(asset.bytes / 1048576).toFixed(1)} MB` : ""}
+                {asset.bytes !== undefined
+                  ? ` · ${(asset.bytes / 1048576).toFixed(1)} MB`
+                  : ""}
               </div>
             </li>
           ))}
@@ -51,64 +50,31 @@ function MediaTab() {
 }
 
 /**
- * Left rail: media, versions, activity, issues. The editor's drawers —
- * everything that isn't preview or timeline lives behind these tabs.
+ * The panel beside the activity rail. Its content follows the rail
+ * selection: Media, Versions (source control) or Issues (lint).
  */
 export function SidePanel() {
-  const [tab, setTab] = useState<Tab>("media");
-  const timeline = useEditorStore((state) => state.timeline);
-  const issueCount = useMemo(() => lint(timeline).length, [timeline]);
-
-  const tabs: { id: Tab; label: string; badge?: number }[] = [
-    { id: "media", label: "Media" },
-    { id: "versions", label: "Versions" },
-    { id: "activity", label: "Activity" },
-    { id: "issues", label: "Issues", badge: issueCount },
-  ];
+  const rail = useUiStore((state) => state.rail);
+  const setBottomTab = useUiStore((state) => state.setBottomTab);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            aria-pressed={tab === t.id}
-            style={{
-              flex: 1,
-              fontSize: 12,
-              padding: "6px 4px",
-              background: tab === t.id ? "#1c1f24" : "transparent",
-              border: `1px solid ${tab === t.id ? theme.border : "transparent"}`,
-              borderRadius: theme.radius,
-              color: tab === t.id ? theme.text : theme.dim,
-              cursor: "pointer",
-            }}
-          >
-            {t.label}
-            {t.badge !== undefined && t.badge > 0 && (
-              <span
-                style={{
-                  marginLeft: 4,
-                  fontSize: 10,
-                  background: theme.warn,
-                  color: "#000",
-                  borderRadius: 8,
-                  padding: "0 5px",
-                }}
-              >
-                {t.badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      <div style={{ overflowY: "auto", minHeight: 0, flex: 1 }}>
-        {tab === "media" && <MediaTab />}
-        {tab === "versions" && <VersionControl />}
-        {tab === "activity" && <ActivityFeed />}
-        {tab === "issues" && <DiagnosticsPanel />}
-      </div>
+      {rail === "media" && <MediaPanel />}
+      {rail === "versions" && <VersionControl />}
+      {rail === "issues" && (
+        <>
+          <DiagnosticsPanel />
+          <div style={{ marginTop: 10 }}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setBottomTab("issues")}
+            >
+              Open issues panel
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
