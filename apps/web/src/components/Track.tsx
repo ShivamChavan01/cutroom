@@ -51,19 +51,6 @@ export const Track = memo(function Track({
         borderBottom: "1px solid #2c2e33",
       }}
     >
-      <span
-        style={{
-          position: "sticky",
-          left: 4,
-          top: 14,
-          zIndex: 1,
-          fontSize: 10,
-          color: "#868e96",
-          userSelect: "none",
-        }}
-      >
-        {trackId}
-      </span>
       {movedLinks.map((link) => (
         <div
           key={`link-${link.key}`}
