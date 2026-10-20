@@ -108,7 +108,7 @@ From Cardboard's hard-problems doc:
 
 ## Status
 
-**Built, tested, committed (`195c406`):**
+**Built, tested, committed (`195c406` + `33542f3`):**
 - `packages/engine/src/model.ts` — timeline data model
 - `packages/engine/src/ops.ts` — Op types + single `applyOp` reducer,
   deterministic split IDs, split/delete composition
@@ -118,8 +118,6 @@ From Cardboard's hard-problems doc:
   (added/removed/moved/trimmed/edited)
 - `packages/engine/src/merge.ts` — 3-way field merge + overlap pass,
   `resolveField`, `overlappingPairs`
-- 66 Vitest tests green (ops.test 16 incl. 4 model tests, history.test
-  11, merge.test 13, lint.test 16, otio.test 10), `tsc --noEmit` clean
 - `packages/engine/src/lint.ts` — Verification linter: `Diagnostic`,
   `Rule`, `defineRule` harness, `lint()` with include/exclude/severity
   overrides, 7 built-in rules (overlap, gap, missing-media, flash-frame,
@@ -127,20 +125,51 @@ From Cardboard's hard-problems doc:
   dropped because `setVolume` already rejects out-of-range values — a rule
   that can never fire is decoration. Severity is caller-assigned, so
   proxy-first workflows can downgrade missing-media to a warning
+- `packages/engine/src/otio.ts` — OpenTimelineIO export/import
+- `packages/engine/src/timecode.ts` — canonical `formatTimecode` /
+  `frameAt` / `msFromFrame`. Lives in the engine because the export
+  formats need it too; the web re-exports it so there is one
+  implementation, not two that drift.
+- `packages/engine/src/export/` — **multiple export formats**, all pure
+  engine functions so they are testable without a browser:
+  `edl.ts` (CMX3600), `fcpxml.ts` (Final Cut Pro XML — one `<spine>` per
+  track inside a `<story>`, which is how Final Cut stores parallel
+  tracks), `cutroom.ts` (lossless native JSON, versioned, with an
+  importer), and `index.ts` — the `EXPORT_FORMATS` registry the UI
+  renders. Adding a format = one serializer + one registry entry.
+- 84 Vitest tests green (ops 16 incl. 4 model, history 11, merge 13,
+  lint 16, otio 10, export 18), `tsc --noEmit` clean
 - Tests cover: split determinism across branches, clean merge, field
   conflict, the overlap case a naive merge misses, no auto-shift,
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
-  malformed-clip rejection
+  malformed-clip rejection, EDL event/track mapping, FCPXML story
+  structure + XML escaping + parseable-XML check, Cutroom file
+  round-trip and version rejection
 
-**Built, browser-tested (`apps/web`, committed through `9c6de39`):**
+**Built, browser-tested (`apps/web`, committed through `33542f3`):**
 - Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
-- Timeline rendering (Track/ClipBlock rows, click select + scrub, zoom slider), time↔pixel scale, time ruler
+- **Editor shell** (VS Code feel): activity-bar icon rail (Media /
+  Versions / Issues) switching the side panel, resizable panels via
+  `react-resizable-panels` (4 nested groups: side/centre/inspector,
+  preview/editor, workspace/bottom) with sizes persisted per group id in
+  localStorage, editor tabs (Timeline | Diff | Merge), bottom panel with
+  Issues/Activity tabs, status line (branch, dirty state, issue count,
+  timecode, author), Ctrl+K command palette (fuzzy subsequence filter,
+  unit-tested)
+- Timeline: toolbar (split/delete/zoom), ruler with timecode, V1/A1 track
+  headers, **draggable playhead** with a handle (pointer + arrow keys,
+  `role="slider"`). `data-timeline-lane` kept on the real lane so
+  `headed.html` still measures the real timeline.
 - Player: double-buffered `<video>` pair — hidden element warmed to
   `readyState >= 4` on inPoint ~1s before each boundary, roles flip at the
   cut, swap decisions (`decideSwap`/`decideWarm` in `lib/swap.ts`) unit-tested
   (14 tests). Replaced an earlier single-element design whose preload was a
   verified no-op. Stall metric: boundary tick → new element's `playing`
   event, logged `(preload on/off)`; headed measurement still pending
+- Preview region: large player + transport with `HH:MM:SS:FF` timecode,
+  play/pause and **previous/next cut** buttons (pure `previousCut` /
+  `nextCut`, unit-tested). Player logic untouched — only where it renders
+  changed.
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
 - Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as a session transcript (✓ applied / ↩ undone, author dots, `#seq`)
@@ -150,24 +179,28 @@ From Cardboard's hard-problems doc:
   watch that snapshot — the timeline rewinds to it and plays. Commit is
   blocked while detached (git semantics), branches can fork off a viewed
   commit, `back to <branch>` returns. 5 tests cover the semantics.
+- **Visual commit graph** (Versions panel → Graph tab): lanes, per-branch
+  line colours, branch badges, click a dot to check that version out.
+  Lane assignment is *branch-based*: the current branch keeps lane 0 and
+  side branches fork right — the earlier draw-order allocation put a new
+  branch leftmost so forks never looked like forks. 12 tests cover
+  ordering, lanes, fork visibility, edge tagging and branch-with-no-commits.
 - Colour-coded diff view on the timeline: added/removed/moved/trimmed/edited
   each get a tint *and* a text cue, removed clips render as dashed ghosts at
   their old position, moved clips get a link from old to new. Triggered by
   comparing any two commits/branches or against the working copy
-- OTIO export button → downloads `.otio` for Premiere/Resolve/Blender (engine-side serializer with round-trip tests)
-- UI shell: top bar, left drawers (Media/Versions/Activity/Issues), right
-  inspector, bottom status line, Ctrl+K command palette (fuzzy filter,
-  unit-tested), shadcn-style primitives + Tailwind v4 + lucide icons.
-  Claude-Code-inspired language: warm orange accent, monospace transcript,
-  keyboard-first. Demo seeders and the placeholder "agent" panel were
-  removed as fake UI — nothing in the product is a mock.
+- **Export menu**: four real interchange formats (otio / fcpxml / edl /
+  cutroom.json), each entry naming the tools that open it and what it loses
+- UI language: warm orange accent, monospace transcript, keyboard-first.
+  Demo seeders and the placeholder "agent" panel were removed as fake UI —
+  nothing in the product is a mock.
 - Perf harness pages: `perf.html` (engine ops in a browser JS runtime only)
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 65 web tests green (store, timeScale, playback, describeOp, vcs, swap
-  policy, diffView mapping, palette), `tsc` clean, `vite build` succeeds.
-  Total 131 across the workspace.
+- 90 web tests green (store, timeScale, playback, describeOp, vcs, swap
+  policy, diffView mapping, palette, commitGraph, layout, upload), `tsc`
+  clean, `vite build` succeeds. Total 174 across the workspace.
 
 ## Known issues (match reality, not older notes)
 
@@ -185,20 +218,41 @@ From Cardboard's hard-problems doc:
   measured against `[data-timeline-lane]` in `headed.html`, pending runs.
 - **Every headed number stays "pending"** until real headed-Chrome runs are
   pasted in. No display is available in this environment, so none are quoted.
+- **Export formats lose things, by design of the formats.** FCPXML drops
+  gaps between clips on a track (Final Cut has no gaps); EDL drops asset
+  links, effects and per-clip metadata (it is a cut list, not a project);
+  only `.cutroom.json` round-trips everything. The export menu says this
+  on each entry rather than hiding it.
+- **Export writes a timeline, not a video.** There is no renderer: no
+  canvas/WebGL compositor, no encoder. A real MP4/WebM render is not
+  built. Do not describe the export menu as "export the video".
+- **The exported files have not been opened in a real NLE.** EDL and FCPXML
+  are verified as well-formed and structurally correct (FCPXML is parsed
+  with a real XML parser; EDL event/track mapping is unit-tested), but
+  "opens in Premiere" is untested here — no display, no NLE. Say
+  "interchange format with round-trip tests", not "works in Resolve".
+- **Frame rate is not in the model.** Exports take a `fps` option
+  (30fps default, matching the timecode readout). A project cannot yet
+  switch frame rate, so a 24fps source exported as 30fps drifts.
+- **The commit graph draws structure, not media.** A branch with no
+  commits of its own has no lane (correctly — there is no fork to draw),
+  so a graph of branch pointers alone can look like a single line.
 
 **Not built:**
 - `apps/server` — empty. Sync, commits, blob store.
 - Version Control presentation layer: branches, commits, checkout,
   conflict-resolution UI ("resolve without friction" half of Cardboard's
   question) — branch/commit/checkout/merge UI DONE; colour-coded diff view
-  DONE as tints + ghosts + moved links; ghost-clip *conflict* rendering on
-  the timeline still open.
+  DONE as tints + ghosts + moved links; visual commit graph DONE;
+  ghost-clip *conflict* rendering on the timeline still open.
 - Verification (linter): DONE in the engine (`lint.ts`); diagnostics
   rendering DONE (clip markers + panel with click-to-jump).
 - Effect ops (`applyFilter`, `setCaption`, ...): discussed, not built.
   Design agreed: content edits as parameterized ops so the agent's output
   flows through the existing log/diff/merge machinery. Rendering them needs
   the player to exist first.
+- Video rendering (MP4/WebM): no compositor, no encoder. Exports are
+  timelines, not rendered video.
 
 ## What the engine does NOT do (explicit non-goals)
 
@@ -251,6 +305,18 @@ From Cardboard's hard-problems doc:
 - [x] OTIO (`.otio`) export: the workflow-interchange bridge so a merged
       timeline can be finished in Premiere/Resolve. Serialiser + round-trip
       tests, no new UI
+- [x] Multiple export formats — DONE (`33542f3`): otio, fcpxml, edl
+      (CMX3600) and a lossless `.cutroom.json`, all engine-side pure
+      functions behind an `EXPORT_FORMATS` registry, with an export menu
+      that names the tools each format opens in and what it loses
+- [x] Visual commit graph so non-engineers can read the history — DONE
+      (`fe37b64`, lanes fixed in `a4c8fb9`): branch-based lanes, per-branch
+      line colours, click to check out
+- [x] VS Code-style shell: activity rail, resizable persisted panels, editor
+      tabs (Timeline/Diff/Merge), bottom panel (Issues/Activity), status bar
+      — DONE (`dc94ccb` → `e17ec30`)
+- [ ] Ghost-clip *conflict* rendering on the timeline: conflicts resolve
+      from a list today, not in place where the clash is
 - [ ] README with numbers, CRDT/branch tradeoff, deliberate cuts
       (multi-track, effects rendering, auth) — README.md written; numbers
       need the headed run to be final
@@ -275,6 +341,10 @@ From Cardboard's hard-problems doc:
 - Unilateral engine decisions made without discussion (open to revision):
   6th op `setVolume`; throw-on-invalid; delete-cascades-to-children;
   field/overlap/deleteModify conflict taxonomy.
+- **Update CONTEXT.md after every batch.** It is the handover document: if
+  it drifts from the code, the next session inherits a lie. Numbers,
+  file names and test counts in here must match what the commands
+  actually print.
 
 ## Environment
 
