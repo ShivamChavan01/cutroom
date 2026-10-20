@@ -1,85 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  type MergeResult,
   type Timeline,
   diffTimelines,
-  resolveField,
 } from "@cutroom/engine";
 import {
   type Repo,
   branchHistory,
   currentCommit,
   head,
-  resolveDeleteModify,
-  resolveOverlap,
 } from "../lib/vcs";
 import { authorColor } from "../lib/identity";
 import { useEditorStore } from "../store";
+import { useUiStore } from "../uiStore";
 import { useVcsStore } from "../vcsStore";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-
-function ConflictRow({
-  conflict,
-  result,
-  onResolve,
-}: {
-  conflict: MergeResult["conflicts"][number];
-  result: MergeResult;
-  onResolve: (next: MergeResult) => void;
-}) {
-  if (conflict.kind === "field") {
-    return (
-      <li style={{ marginBottom: 6 }}>
-        <span style={{ color: "#ffd43b" }}>[field]</span> {conflict.clipId}.
-        {conflict.field}: ours {String(conflict.ours)} vs theirs{" "}
-        {String(conflict.theirs)}{" "}
-        <Button size="sm"
-          onClick={() =>
-            onResolve(resolveField(result, conflict.clipId, conflict.field, "ours"))
-          }
-        >
-          Keep ours
-        </Button>{" "}
-        <Button size="sm"
-          onClick={() =>
-            onResolve(resolveField(result, conflict.clipId, conflict.field, "theirs"))
-          }
-        >
-          Take theirs
-        </Button>
-      </li>
-    );
-  }
-  if (conflict.kind === "deleteModify") {
-    return (
-      <li style={{ marginBottom: 6 }}>
-        <span style={{ color: "#ff6b6b" }}>[delete-vs-edit]</span>{" "}
-        {conflict.clipId} deleted on one side, edited on the other.{" "}
-        <Button size="sm" onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, true))}>
-          Keep clip
-        </Button>{" "}
-        <Button size="sm"
-          onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, false))}
-        >
-          Remove clip
-        </Button>
-      </li>
-    );
-  }
-  return (
-    <li style={{ marginBottom: 6 }}>
-      <span style={{ color: "#ff6b6b" }}>[overlap]</span> {conflict.a} and{" "}
-      {conflict.b} collide on {conflict.trackId}.{" "}
-      <Button size="sm" onClick={() => onResolve(resolveOverlap(result, conflict.a, conflict.b))}>
-        Keep {conflict.a}
-      </Button>{" "}
-      <Button size="sm" onClick={() => onResolve(resolveOverlap(result, conflict.b, conflict.a))}>
-        Keep {conflict.b}
-      </Button>
-    </li>
-  );
-}
 
 function DiffCompare({
   repo,
@@ -97,6 +32,7 @@ function DiffCompare({
   onTarget: (value: string) => void;
 }) {
   const store = useVcsStore.getState();
+  const openTab = useUiStore((state) => state.openTab);
   const diffOverlay = useVcsStore((state) => state.diffOverlay);
   const { options, resolve } = diffTargets(repo);
 
@@ -111,6 +47,7 @@ function DiffCompare({
         : resolve(diffTarget);
     if (base === null || target === null) return;
     store.setDiff(base.timeline, base.label, target.timeline, target.label);
+    openTab("diff");
   };
 
   return (
@@ -185,6 +122,7 @@ export function VersionControl() {
   const repo = useVcsStore((state) => state.repo);
   const pending = useVcsStore((state) => state.pending);
   const diffOverlay = useVcsStore((state) => state.diffOverlay);
+  const openTab = useUiStore((state) => state.openTab);
   const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
   const [branchName, setBranchName] = useState("");
@@ -374,79 +312,43 @@ export function VersionControl() {
         onTarget={setDiffTarget}
       />
 
-      {pending === null ? (
-        <div style={{ display: "flex", gap: 6 }}>
-          <select
-            value={mergeSource}
-            onChange={(event) => setMergeSource(event.target.value)}
-          >
-            <option value="">merge from…</option>
-            {branches
-              .filter((name) => name !== repo.currentBranch)
-              .map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-          </select>
-          <Button size="sm"
-            disabled={mergeSource === ""}
-            onClick={() => {
-              try {
-                store.beginMerge(mergeSource);
-              } catch (error) {
-                alert(error instanceof Error ? error.message : "merge failed");
-              }
-            }}
-          >
-            Merge
-          </Button>
-        </div>
-      ) : (
-        <div
+      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+        <select
+          value={mergeSource}
+          onChange={(event) => setMergeSource(event.target.value)}
           style={{
-            border: "1px solid #495057", borderRadius: 4, padding: 8, marginTop: 4,
+            background: "#16181d",
+            color: "#e9ecef",
+            border: "1px solid #2c2e33",
+            borderRadius: 6,
+            padding: "4px 6px",
+            fontSize: 12,
           }}
         >
-          <header style={{ marginBottom: 6 }}>
-            Merging <strong>{pending.sourceBranch}</strong> into{" "}
-            <strong>{repo.currentBranch}</strong> (base {pending.baseId}) —{" "}
-            {pending.result.clean
-              ? "clean, ready to commit"
-              : `${pending.result.conflicts.length} conflict(s) to resolve`}
-          </header>
-          {!pending.result.clean && (
-            <ul style={{ listStyle: "none", margin: "0 0 8px", padding: 0 }}>
-              {pending.result.conflicts.map((conflict, index) => (
-                <ConflictRow
-                  key={index}
-                  conflict={conflict}
-                  result={pending.result}
-                  onResolve={store.setResult}
-                />
-              ))}
-            </ul>
-          )}
-          <div style={{ display: "flex", gap: 6 }}>
-            <Input
-              placeholder="merge commit message"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              style={{ flex: 1 }}
-            />
-            <Button size="sm"
-              disabled={!pending.result.clean || message.trim().length === 0}
-              onClick={() => {
-                store.commitMerge(message.trim());
-                setMessage("");
-              }}
-            >
-              Commit merge
-            </Button>
-            <Button size="sm" onClick={store.cancelMerge}>Cancel</Button>
-          </div>
-        </div>
-      )}
+          <option value="">merge from…</option>
+          {branches
+            .filter((name) => name !== repo.currentBranch)
+            .map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+        </select>
+        <Button
+          size="sm"
+          disabled={mergeSource === ""}
+          onClick={() => {
+            try {
+              store.beginMerge(mergeSource);
+              openTab("merge");
+            } catch (error) {
+              alert(error instanceof Error ? error.message : "merge failed");
+            }
+          }}
+        >
+          Merge
+        </Button>
+      </div>
     </section>
   );
 }

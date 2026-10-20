@@ -1,5 +1,8 @@
+import { type Clip, clipsOnTrack } from "@cutroom/engine";
 import { closeGapsOps } from "./closeGaps";
+import { nextCut, previousCut } from "./timecode";
 import { useEditorStore } from "../store";
+import { useUiStore } from "../uiStore";
 
 export interface PaletteAction {
   readonly id: string;
@@ -27,6 +30,12 @@ export function filterActions(actions: readonly PaletteAction[], query: string):
 /** Every action the palette offers. All real — each one dispatches store ops. */
 export function buildActions(): PaletteAction[] {
   const state = () => useEditorStore.getState();
+  const videoClips = (): readonly Clip[] => {
+    const timeline = state().timeline;
+    const trackId =
+      timeline.tracks.find((track) => track.kind === "video")?.id ?? "v1";
+    return clipsOnTrack(timeline, trackId);
+  };
   return [
     {
       id: "play-pause",
@@ -37,6 +46,42 @@ export function buildActions(): PaletteAction[] {
         if (s.isPlaying) s.pause();
         else s.play();
       },
+    },
+    {
+      id: "next-cut",
+      label: "Jump to next cut",
+      run: () => {
+        const cuts = videoClips().map((clip) => ({ start: clip.start }));
+        const target = nextCut(cuts, state().playheadMs);
+        if (target !== null) state().setPlayhead(target);
+      },
+    },
+    {
+      id: "previous-cut",
+      label: "Jump to previous cut",
+      run: () => {
+        const cuts = videoClips().map((clip) => ({ start: clip.start }));
+        const target = previousCut(cuts, state().playheadMs);
+        if (target !== null) state().setPlayhead(target);
+      },
+    },
+    {
+      id: "show-issues",
+      label: "Show issues panel",
+      run: () => {
+        useUiStore.getState().setBottomTab("issues");
+        useUiStore.getState().setRail("issues");
+      },
+    },
+    {
+      id: "show-activity",
+      label: "Show activity panel",
+      run: () => useUiStore.getState().setBottomTab("activity"),
+    },
+    {
+      id: "show-timeline",
+      label: "Show timeline",
+      run: () => useUiStore.getState().openTab("timeline"),
     },
     {
       id: "split",

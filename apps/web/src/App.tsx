@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { Timeline } from "./components/Timeline";
 import { Preview } from "./components/Preview";
+import { EditorArea } from "./components/EditorArea";
+import { BottomPanel } from "./components/BottomPanel";
 import { ActivityBar } from "./components/ActivityBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatusBar } from "./components/StatusBar";
@@ -97,8 +98,8 @@ export function App() {
                   </Panel>
                   <ResizeHandle orientation="horizontal" />
                   <Panel id="editor" minSize={20}>
-                    <div className="h-full overflow-auto p-3">
-                      <Timeline />
+                    <div className="h-full overflow-hidden">
+                      <EditorArea />
                     </div>
                   </Panel>
                 </ResizableGroup>
@@ -117,7 +118,9 @@ export function App() {
         </Panel>
         <ResizeHandle orientation="horizontal" />
         <Panel id="bottom" minSize={8}>
-          <div className="h-full border-t border-border bg-card" />
+          <div className="h-full overflow-hidden">
+            <BottomPanel />
+          </div>
         </Panel>
       </ResizableGroup>
       <StatusBar />

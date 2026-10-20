@@ -1,13 +1,17 @@
 import { useMemo } from "react";
-import { diffTimelines } from "@cutroom/engine";
+import { diffTimelines, lint } from "@cutroom/engine";
 import { currentCommit } from "../lib/vcs";
+import { formatTimecode } from "../lib/timecode";
 import { useEditorStore, usePlayhead } from "../store";
 import { useVcsStore } from "../vcsStore";
-import { formatTime } from "../theme";
 
-/** Bottom status line: branch, dirtiness, scale, position. Always honest. */
+/**
+ * Status bar: branch (or detached commit), dirty state, issue count,
+ * timecode and author. Every value is derived from real state.
+ */
 export function StatusBar() {
   const timeline = useEditorStore((state) => state.timeline);
+  const authorId = useEditorStore((state) => state.authorId);
   const repo = useVcsStore((state) => state.repo);
   const playheadMs = usePlayhead();
 
@@ -20,11 +24,11 @@ export function StatusBar() {
     }
   }, [repo, timeline]);
 
-  const clips = Object.keys(timeline.clips).length;
+  const issueCount = useMemo(() => lint(timeline).length, [timeline]);
   const detached = repo?.detachedAt ?? null;
 
   return (
-    <footer className="flex shrink-0 items-center gap-4 border-t border-border bg-card px-3.5 py-1.5 font-mono text-[11px] text-muted">
+    <footer className="flex shrink-0 items-center gap-4 border-t border-border bg-card px-3.5 py-1 font-mono text-[11px] text-muted">
       {detached !== null ? (
         <span className="text-[#d97757]" title="Detached HEAD — viewing a specific commit">
           ⎇ detached at {detached}
@@ -41,12 +45,13 @@ export function StatusBar() {
           ✓ clean
         </span>
       )}
-      <span title="Clips on the timeline">
-        {clips} clip{clips === 1 ? "" : "s"}
+      <span title="Linter issues">
+        {issueCount} issue{issueCount === 1 ? "" : "s"}
       </span>
       <span className="flex-1" />
       <span className="hidden sm:inline">Ctrl+K commands · S split · Space play</span>
-      <span>{formatTime(playheadMs)}</span>
+      <span className="tabular-nums text-foreground">{formatTimecode(playheadMs)}</span>
+      <span title="Local author identity">{authorId}</span>
     </footer>
   );
 }
