@@ -1,5 +1,6 @@
-import { Download, Upload } from "lucide-react";
-import { ExportOitioButton, UploadButton } from "./UploadButton";
+import { Upload } from "lucide-react";
+import { UploadButton } from "./UploadButton";
+import { ExportMenu } from "./ExportMenu";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { Badge } from "./ui/badge";
@@ -19,7 +20,7 @@ export function TopBar() {
       </Badge>
       <span className="flex-1" />
       <UploadButton icon={<Upload />} label="Add video" />
-      <ExportOitioButton icon={<Download />} />
+      <ExportMenu />
       <span title="Local author identity" className="text-xs text-muted">
         {authorId}
       </span>

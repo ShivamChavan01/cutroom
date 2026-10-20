@@ -1,30 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
-import { stringifyOTIO } from "@cutroom/engine";
 import { uploadFiles } from "../lib/upload";
 import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
-
-/** Download the current timeline as .otio for Premiere/Resolve/Blender. */
-export function ExportOitioButton({ icon }: { icon?: ReactNode }) {
-  const timeline = useEditorStore((state) => state.timeline);
-  return (
-    <Button
-      size="sm"
-      onClick={() => {
-        const blob = new Blob([stringifyOTIO(timeline)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${timeline.id || "timeline"}.otio`;
-        link.click();
-        URL.revokeObjectURL(url);
-      }}
-      title="Export OpenTimelineIO for Premiere / Resolve / Blender"
-    >
-      {icon} Export .otio
-    </Button>
-  );
-}
 
 /**
  * File-picker half of uploads. The pipeline lives in lib/upload so the

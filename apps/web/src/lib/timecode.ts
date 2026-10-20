@@ -1,30 +1,10 @@
 /**
  * Timecode formatting and cut navigation for the transport.
  *
- * Pure functions so the transport's behaviour is testable without a
- * player: the readout format and the "jump to previous/next cut" rule are
- * the two things a user notices when they are wrong.
+ * `formatTimecode` lives in the engine (it is also what the export formats
+ * use) — re-exported here so the UI imports it from one place.
  */
-
-export const DEFAULT_FPS = 30;
-
-export interface TimecodeOptions {
-  readonly fps?: number;
-}
-
-/** HH:MM:SS:FF — frames at the given rate, non-drop-frame. */
-export function formatTimecode(ms: number, options: TimecodeOptions = {}): string {
-  const fps = options.fps ?? DEFAULT_FPS;
-  const total = Math.max(0, ms);
-  const totalSeconds = Math.floor(total / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const frames = Math.floor(((total % 1000) / 1000) * fps);
-  const pad = (value: number, width = 2): string =>
-    String(value).padStart(width, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}:${pad(frames)}`;
-}
+export { formatTimecode, DEFAULT_FPS, frameAt, msFromFrame } from "@cutroom/engine";
 
 /** MM:SS.mmm — used by the timeline ruler, where sub-second precision helps. */
 export function formatRulerTime(ms: number): string {
