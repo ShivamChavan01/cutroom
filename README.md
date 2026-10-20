@@ -18,12 +18,20 @@ own hard problems with working code instead of claims:
 - **Linter**: `lint()` with a rule harness (`defineRule`) and 7 built-in
   structural rules — overlap, gap, missing-media, flash-frame,
   trim-past-source, zero-length, unused-asset. Severity is caller-assigned.
-- **Web UI** (`apps/web`): timeline rendering, `<video>` player with
-  double-buffered boundary swaps, split/trim/delete, blame dots, activity
-  feed, video upload (sha256 asset ids), and a git workflow — commits,
-  branches, checkout, merge with per-conflict resolution.
-- **OTIO export**: one click downloads `.otio` for Premiere / Resolve /
-  Blender (serializer + round-trip tests; open it in a real NLE to verify).
+- **Web UI** (`apps/web`): a VS Code-shaped shell — activity-bar rail
+  (Media / Versions / Issues), resizable panels persisted per group id,
+  editor tabs (Timeline / Diff / Merge), bottom panel (Issues / Activity),
+  status line, and a Ctrl+K command palette. Inside it: timeline with
+  ruler, track headers and a draggable playhead; a double-buffered
+  `<video>` player that swaps sources at cut boundaries; split/trim/delete;
+  blame dots; a session-transcript activity feed; video upload (sha256
+  asset ids); and a git workflow — commits, branches, checkout, a visual
+  commit graph, and merge with per-conflict resolution.
+- **Four export formats** (engine-side pure functions): `.otio`
+  (OpenTimelineIO), `.fcpxml` (Final Cut Pro XML), `.edl` (CMX3600) and
+  a lossless `.cutroom.json`. The export menu names the tools each one
+  opens in and what it loses. These are timelines, not rendered video —
+  there is no compositor or encoder yet.
 
 ## Numbers
 
@@ -62,6 +70,8 @@ merge UI is. Collab infra (`apps/server`) is not built yet.
   pipelines, not for this layer.
 - **Yjs live collab + server** — architecture sketched in CONTEXT.md,
   not built.
+- **Video rendering** — exports are timelines. There is no canvas/WebGL
+  compositor and no encoder, so nothing here produces an MP4.
 
 ## Run it
 
@@ -82,6 +92,6 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-87 tests green (66 engine + 21 web), `tsc --noEmit` clean. Honest
+174 tests green (84 engine + 90 web), `tsc --noEmit` clean. Honest
 accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
 (research notes), and PERF.md.
