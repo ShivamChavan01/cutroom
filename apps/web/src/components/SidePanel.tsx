@@ -1,4 +1,3 @@
-import { UploadButton, ExportOitioButton } from "./UploadButton";
 import { VersionControl } from "./VersionControl";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useEditorStore } from "../store";
@@ -11,13 +10,9 @@ function MediaPanel() {
   const entries = Object.values(assets);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <UploadButton />
-        <ExportOitioButton />
-      </div>
       {entries.length === 0 ? (
         <p style={{ fontSize: 12, color: "#868e96", margin: 0 }}>
-          No media yet. Upload a video to begin.
+          No media yet. Use Add video in the title bar to import a file.
         </p>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
