@@ -1,12 +1,13 @@
+import { useState } from "react";
 import { VersionControl } from "./VersionControl";
+import { CommitGraph } from "./CommitGraph";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useEditorStore } from "../store";
 import { formatTime } from "../theme";
 import { useUiStore } from "../uiStore";
 import { Button } from "./ui/button";
 
-function MediaPanel() {
-  const assets = useEditorStore((state) => state.timeline.assets);
+function MediaPanel() {  const assets = useEditorStore((state) => state.timeline.assets);
   const entries = Object.values(assets);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -44,6 +45,31 @@ function MediaPanel() {
   );
 }
 
+function VersionsPanel() {
+  const [view, setView] = useState<"history" | "graph">("history");
+  return (
+    <div className="flex flex-col">
+      <div className="mb-2 flex gap-1">
+        {(["history", "graph"] as const).map((id) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            aria-pressed={view === id}
+            className={`rounded-md px-2.5 py-1 text-[12px] ${
+              view === id
+                ? "bg-[#23262c] text-foreground"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {id === "history" ? "History" : "Graph"}
+          </button>
+        ))}
+      </div>
+      {view === "history" ? <VersionControl /> : <CommitGraph />}
+    </div>
+  );
+}
+
 /**
  * The panel beside the activity rail. Its content follows the rail
  * selection: Media, Versions (source control) or Issues (lint).
@@ -55,7 +81,7 @@ export function SidePanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {rail === "media" && <MediaPanel />}
-      {rail === "versions" && <VersionControl />}
+      {rail === "versions" && <VersionsPanel />}
       {rail === "issues" && (
         <>
           <DiagnosticsPanel />
