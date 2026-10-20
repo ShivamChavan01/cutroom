@@ -3,11 +3,11 @@ import { Preview } from "./components/Preview";
 import { EditorArea } from "./components/EditorArea";
 import { BottomPanel } from "./components/BottomPanel";
 import { ActivityBar } from "./components/ActivityBar";
+import { SidePanel } from "./components/SidePanel";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatusBar } from "./components/StatusBar";
 import { TopBar } from "./components/TopBar";
 import { Inspector } from "./components/Inspector";
-import { SidePanel } from "./components/SidePanel";
 import { Panel, ResizableGroup, ResizeHandle } from "./components/ResizableGroup";
 import { deleteSelected, splitAtPlayhead } from "./lib/actions";
 import { useEditorStore } from "./store";
@@ -79,11 +79,20 @@ export function App() {
             <ResizableGroup
               groupId="shell"
               orientation="horizontal"
-              panelIds={["centre", "inspector"]}
-              defaultLayout={{ centre: 78, inspector: 22 }}
-              minSize={12}
+              panelIds={["side", "centre", "inspector"]}
+              defaultLayout={{ side: 18, centre: 62, inspector: 20 }}
+              minSize={10}
             >
-              <Panel id="centre" minSize={40}>
+              <Panel id="side" minSize={10}>
+                <aside
+                  aria-label="side panel"
+                  className="h-full overflow-y-auto border-r border-border bg-card p-3"
+                >
+                  <SidePanel />
+                </aside>
+              </Panel>
+              <ResizeHandle orientation="vertical" />
+              <Panel id="centre" minSize={30}>
                 <ResizableGroup
                   groupId="centre"
                   orientation="vertical"

@@ -212,8 +212,10 @@ export function Timeline() {
             </div>
 
             {Object.keys(timeline.clips).length === 0 && (
+              // Absolute so it overlays the lanes instead of pushing them
+              // down — the track headers would stop lining up.
               <div
-                className="px-3 py-9 text-center text-[13px] text-muted"
+                className="pointer-events-none absolute inset-x-0 top-8 z-10 px-3 text-center text-[13px] text-muted"
               >
                 <div className="mb-1.5">Drop footage here to begin.</div>
                 <div className="text-xs">
@@ -279,6 +281,7 @@ export function Timeline() {
                 background: "#d97757",
                 cursor: "ew-resize",
                 touchAction: "none",
+                zIndex: 20,
               }}
             >
               <span
