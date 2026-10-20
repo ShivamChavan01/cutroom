@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Timeline } from "./components/Timeline";
-import { Player } from "./components/Player";
+import { Preview } from "./components/Preview";
 import { ActivityBar } from "./components/ActivityBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatusBar } from "./components/StatusBar";
@@ -92,7 +92,7 @@ export function App() {
                 >
                   <Panel id="preview" minSize={20}>
                     <div className="h-full overflow-y-auto p-3">
-                      <Player />
+                      <Preview />
                     </div>
                   </Panel>
                   <ResizeHandle orientation="horizontal" />

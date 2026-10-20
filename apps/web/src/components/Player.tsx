@@ -272,24 +272,6 @@ export function Player() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, timeline]);
 
-  const toggle = (): void => {
-    const store = useEditorStore.getState();
-    const video = elementFor(liveSideRef.current);
-    if (video === null) return;
-    if (store.isPlaying) {
-      video.pause();
-      store.pause();
-      return;
-    }
-    let at = store.playheadMs;
-    if (resolveActiveClip(clips, at) === null) {
-      if (at >= timelineDuration(timeline)) at = 0;
-      else return;
-      store.setPlayhead(at);
-    }
-    if (syncTo(at, true)) store.play();
-  };
-
   const activeNow = resolveActiveClip(clips, playheadMs);
   const missingMedia =
     activeNow !== null && resolveAssetUrl(activeNow.clip.assetId) === undefined;
@@ -307,8 +289,9 @@ export function Player() {
       <div
         style={{
           position: "relative",
-          width: 640,
-          height: 360,
+          width: "100%",
+          maxWidth: 960,
+          aspectRatio: "16 / 9",
           background: "#000",
           borderRadius: 6,
           overflow: "hidden",
@@ -370,17 +353,6 @@ export function Player() {
             Media not local yet: {activeNow?.clip.assetId}
           </div>
         )}
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <Button size="sm" variant="default" onClick={toggle}>
-          {isPlaying ? <Pause /> : <Play />}
-          {isPlaying ? "Pause" : "Play"}
-        </Button>
-        <span style={{ fontSize: 12, color: "#868e96", alignSelf: "center" }}>
-          {activeNow !== null
-            ? `${activeNow.clip.id} @ src ${(activeNow.sourceTimeMs / 1000).toFixed(2)}s`
-            : "—"}
-        </span>
       </div>
     </div>
   );
