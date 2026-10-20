@@ -6,16 +6,26 @@ import { useVcsStore } from "../vcsStore";
 import { useEditorStore } from "../store";
 
 const ROW_HEIGHT = 46;
-const LANE_WIDTH = 20;
+const LANE_WIDTH = 22;
 const NODE_RADIUS = 5;
+
+/** Stable colour per branch name, so a branch keeps its colour everywhere. */
+function branchColor(branch: string): string {
+  let hash = 0;
+  for (let i = 0; i < branch.length; i++) {
+    hash = (Math.imul(hash, 31) + branch.charCodeAt(i)) >>> 0;
+  }
+  return `hsl(${hash % 360} 65% 58%)`;
+}
 
 /**
  * Commit graph.
  *
- * Drawn so that someone who has never used git can read it: each vertical
- * line is a line of work, each dot is a saved version, and the place where
- * two lines meet is where two people's work came together. Clicking a dot
- * checks that version out, exactly like the commit list.
+ * Drawn so that someone who has never used git can read it: the leftmost
+ * vertical line is the line you are on, side branches fork off to the right
+ * in their own colour, each dot is a saved version, and where two lines
+ * meet is where two people's work came together. Clicking a dot checks
+ * that version out, exactly like the commit list.
  */
 export function CommitGraph() {
   const repo = useVcsStore((state) => state.repo);
@@ -30,9 +40,9 @@ export function CommitGraph() {
     );
   }
 
-  const graphWidth = graph.laneCount * LANE_WIDTH + 8;
+  const graphWidth = graph.laneCount * LANE_WIDTH + 10;
   const height = graph.nodes.length * ROW_HEIGHT;
-  const laneX = (lane: number): number => 12 + lane * LANE_WIDTH;
+  const laneX = (lane: number): number => 14 + lane * LANE_WIDTH;
   const rowY = (row: number): number => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   const nodeById = new Map(graph.nodes.map((node) => [node.commit.id, node]));
@@ -56,14 +66,15 @@ export function CommitGraph() {
   return (
     <div>
       <p className="mb-3 text-[11px] text-faint">
-        Each line is a line of work. Each dot is a saved version. Where two
-        lines meet, two people's work came together.
+        The left line is the line you are on. Branches fork off to the right
+        in their own colour. Each dot is a saved version; where two lines
+        meet, two people's work came together.
       </p>
       <div className="relative" style={{ height }}>
         <svg
           width={graphWidth}
           height={height}
-          className="absolute left-0 top-0"
+          className="absolute left-0 top-0 overflow-visible"
           aria-hidden
         >
           {graph.edges.map((edge) => {
@@ -74,6 +85,7 @@ export function CommitGraph() {
             const y1 = rowY(from.row);
             const x2 = laneX(to.lane);
             const y2 = rowY(to.row);
+            const stroke = edge.branch === undefined ? "#4b525c" : branchColor(edge.branch);
             if (x1 === x2) {
               return (
                 <line
@@ -82,8 +94,8 @@ export function CommitGraph() {
                   y1={y1}
                   x2={x2}
                   y2={y2}
-                  stroke="#4b525c"
-                  strokeWidth={1.5}
+                  stroke={stroke}
+                  strokeWidth={2}
                 />
               );
             }
@@ -94,8 +106,8 @@ export function CommitGraph() {
                 key={`${edge.from}-${edge.to}`}
                 d={`M ${x1} ${y1} V ${midY} L ${x2} ${midY} V ${y2}`}
                 fill="none"
-                stroke="#4b525c"
-                strokeWidth={1.5}
+                stroke={stroke}
+                strokeWidth={2}
               />
             );
           })}
@@ -139,7 +151,11 @@ export function CommitGraph() {
             {tipsByCommit.get(node.commit.id)?.map((branch) => (
               <span
                 key={branch}
-                className="shrink-0 rounded-full border border-border px-1.5 font-mono text-[10px] text-muted"
+                className="shrink-0 rounded-full px-1.5 font-mono text-[10px]"
+                style={{
+                  color: branchColor(branch),
+                  border: `1px solid ${branchColor(branch)}`,
+                }}
               >
                 {branch}
               </span>

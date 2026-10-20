@@ -96,6 +96,73 @@ describe("buildCommitGraph", () => {
     expect(new Set(rows).size).toBe(rows.length);
   });
 
+  it("keeps the current branch in lane 0 and forks side branches to the right", () => {
+    // The thing a graph must show: two lines of work, visibly separate.
+    let repo = baseRepo();
+    repo = commit(repo, empty, "base work", "alice");
+    repo = createBranch(repo, "feature");
+    repo = checkout(repo, "feature");
+    repo = commit(repo, empty, "feature work", "bob");
+    repo = checkout(repo, "main");
+
+    const graph = buildCommitGraph(repo);
+    const byId = new Map(graph.nodes.map((n) => [n.commit.id, n]));
+
+    // main's tip is lane 0; the feature commit is to its right.
+    const mainHead = repo.branches["main"]!;
+    const featureHead = repo.branches["feature"]!;
+    expect(byId.get(mainHead)?.lane).toBe(0);
+    expect(byId.get(featureHead)?.lane).toBeGreaterThan(0);
+    expect(graph.laneCount).toBeGreaterThan(1);
+  });
+
+  it("gives a branch with no commits of its own no lane", () => {
+    // A branch pointing at a commit on the main line is not a fork.
+    let repo = baseRepo();
+    repo = commit(repo, empty, "base work", "alice");
+    repo = createBranch(repo, "feature");
+
+    const graph = buildCommitGraph(repo);
+    expect(graph.laneCount).toBe(1);
+    expect(graph.branchLane["feature"]).toBeUndefined();
+  });
+
+  it("tags the tail edge of a side branch so it can be drawn in its colour", () => {
+    let repo = baseRepo();
+    repo = commit(repo, empty, "base work", "alice");
+    repo = createBranch(repo, "feature");
+    repo = checkout(repo, "feature");
+    repo = commit(repo, empty, "feature work", "bob");
+    // Back to main, which now has a commit of its own: a real fork.
+    repo = checkout(repo, "main");
+    repo = commit(repo, empty, "main work", "carol");
+
+    const graph = buildCommitGraph(repo);
+    const tagged = graph.edges.filter((edge) => edge.branch !== undefined);
+    expect(tagged).toHaveLength(1);
+    expect(tagged[0]?.branch).toBe("feature");
+  });
+
+  it("shows no fork when the other branch is simply behind the current one", () => {
+    // You are on `feature`; `main` is an ancestor. One line, honestly.
+    let repo = baseRepo();
+    repo = commit(repo, empty, "base work", "alice");
+    repo = createBranch(repo, "feature");
+    repo = checkout(repo, "feature");
+    repo = commit(repo, empty, "feature work", "bob");
+
+    const graph = buildCommitGraph(repo);
+    expect(graph.laneCount).toBe(1);
+    expect(graph.edges.filter((edge) => edge.branch !== undefined)).toEqual([]);
+  });
+
+  it("records which lane each branch runs in", () => {
+    let repo = baseRepo();
+    repo = createBranch(repo, "feature");
+    const graph = buildCommitGraph(repo);
+    expect(graph.branchLane["main"]).toBe(0);
+  });
+
   it("keeps every edge pointing at a commit that exists", () => {
     let repo = baseRepo();
     repo = commit(repo, empty, "second", "alice");
