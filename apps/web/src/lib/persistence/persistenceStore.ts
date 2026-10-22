@@ -30,9 +30,12 @@ interface PersistenceStore {
   readonly message: string | null;
   readonly loadFailure: LoadFailure | null;
   readonly usage: { usage: number | null; quota: number | null } | null;
+  /** Set when media could not be stored or restored — visible, never silent. */
+  readonly mediaWarning: string | null;
   readonly setStatus: (status: PersistStatus, message?: string | null) => void;
   readonly setLoadFailure: (failure: LoadFailure | null) => void;
   readonly setUsage: (usage: { usage: number | null; quota: number | null }) => void;
+  readonly setMediaWarning: (warning: string | null) => void;
 }
 
 export const usePersistenceStore = create<PersistenceStore>()((set) => ({
@@ -40,7 +43,9 @@ export const usePersistenceStore = create<PersistenceStore>()((set) => ({
   message: null,
   loadFailure: null,
   usage: null,
+  mediaWarning: null,
   setStatus: (status, message = null) => set({ status, message }),
   setLoadFailure: (loadFailure) => set({ loadFailure }),
   setUsage: (usage) => set({ usage }),
+  setMediaWarning: (mediaWarning) => set({ mediaWarning }),
 }));

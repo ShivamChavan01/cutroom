@@ -1,4 +1,7 @@
 import { useEditorStore } from "../store";
+import { useVcsStore } from "../vcsStore";
+import { deleteMedia } from "./media/opfs";
+import { isAssetReferenced } from "./media/references";
 
 /**
  * Editor actions shared by keyboard shortcuts, transport bar and inspector.
@@ -22,8 +25,18 @@ export function splitAtPlayhead(): boolean {
 export function deleteSelected(): boolean {
   const { selectedClipId, dispatch, selectClip } = useEditorStore.getState();
   if (selectedClipId === null) return false;
+  const clip = useEditorStore.getState().timeline.clips[selectedClipId];
   dispatch({ type: "deleteClip", clipId: selectedClipId });
   selectClip(null);
+  if (clip !== undefined) {
+    // The file may only go when nothing points at it any more: no clip in
+    // the working timeline and no clip in any commit's snapshot.
+    const { timeline } = useEditorStore.getState();
+    const { repo } = useVcsStore.getState();
+    if (!isAssetReferenced(clip.assetId, timeline, repo?.commits ?? {})) {
+      void deleteMedia(clip.assetId);
+    }
+  }
   return true;
 }
 

@@ -26,6 +26,7 @@ export function StatusBar() {
   const message = usePersistenceStore((state) => state.message);
   const loadFailure = usePersistenceStore((state) => state.loadFailure);
   const usage = usePersistenceStore((state) => state.usage);
+  const mediaWarning = usePersistenceStore((state) => state.mediaWarning);
 
   const dirty = useMemo(() => {
     if (repo === null) return 0;
@@ -80,6 +81,14 @@ export function StatusBar() {
           >
             Reset project
           </Button>
+        </div>
+      )}
+      {mediaWarning !== null && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center gap-2 border-t border-warn/40 bg-warn/10 px-3.5 py-1.5 text-[12px] text-warn"
+        >
+          {mediaWarning}
         </div>
       )}
       <footer className="flex shrink-0 items-center gap-4 border-t border-border bg-card px-3.5 py-1 font-mono text-[11px] text-muted">

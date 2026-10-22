@@ -1,16 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { VersionControl } from "./VersionControl";
 import { CommitGraph } from "./CommitGraph";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { formatBytes, mediaUsage as readMediaUsage } from "../lib/media/opfs";
 import { useEditorStore } from "../store";
 import { formatTime } from "../theme";
 import { useUiStore } from "../uiStore";
 import { Button } from "./ui/button";
-
-function MediaPanel() {  const assets = useEditorStore((state) => state.timeline.assets);
+function MediaPanel() {
+  const assets = useEditorStore((state) => state.timeline.assets);
   const entries = Object.values(assets);
+  const [mediaUsage, setMediaUsage] = useState<{ files: number; bytes: number } | null>(null);
+
+  useEffect(() => {
+    void readMediaUsage().then(setMediaUsage);
+  }, [entries.length]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {mediaUsage !== null && mediaUsage.files > 0 && (
+        <div className="text-[11px] text-faint">
+          {mediaUsage.files} media file{mediaUsage.files === 1 ? "" : "s"} stored ·{" "}
+          {formatBytes(mediaUsage.bytes)}
+        </div>
+      )}
       {entries.length === 0 ? (
         <p style={{ fontSize: 12, color: "#868e96", margin: 0 }}>
           No media yet. Use Add video in the title bar to import a file.

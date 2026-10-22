@@ -1,5 +1,6 @@
 import { makeClip, timelineDuration } from "@cutroom/engine";
 import { registerAssetUrl } from "./assets";
+import { isOpfsAvailable, writeMedia } from "./media/opfs";
 import { useEditorStore } from "../store";
 
 /** Short deterministic id when hashing is unavailable. Never silent. */
@@ -33,6 +34,8 @@ function probeDurationMs(url: string): Promise<number> {
 export interface UploadReport {
   readonly added: readonly string[];
   readonly skipped: readonly { name: string; reason: string }[];
+  /** Set when the file could not be stored for the session (no OPFS, or no room). */
+  readonly storageWarning: string | null;
 }
 
 /**
@@ -47,6 +50,7 @@ export async function uploadFiles(
 ): Promise<UploadReport> {
   const added: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
+  let storageWarning: string | null = null;
   for (const file of files) {
     // Re-read every iteration: each dispatch replaces the timeline, and
     // a stale snapshot would stack multi-file uploads on top of each other.
@@ -58,6 +62,20 @@ export async function uploadFiles(
         assetIdFor(file),
         probeDurationMs(url),
       ]);
+
+      // Store the bytes so the clip still plays after a refresh. If the
+      // browser has no private file system, or no room, the session URL
+      // still works for now — but say so, loudly, once.
+      if (isOpfsAvailable()) {
+        const written = await writeMedia(id, file);
+        if (!written.ok) {
+          storageWarning = written.error;
+        }
+      } else {
+        storageWarning =
+          "this browser has no private file system — media lasts for this session only";
+      }
+
       store.addAsset({ id, kind: "video", duration, bytes: file.size });
       registerAssetUrl(id, url);
       // Re-uploading the same file reuses the asset (content-addressed)
@@ -88,5 +106,5 @@ export async function uploadFiles(
     }
   }
   onStatus?.(null);
-  return { added, skipped };
+  return { added, skipped, storageWarning };
 }

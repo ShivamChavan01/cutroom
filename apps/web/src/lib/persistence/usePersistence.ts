@@ -1,5 +1,7 @@
 import { useEffect } from "react";
-import { emptyTimeline } from "@cutroom/engine";
+import { emptyTimeline, type Timeline } from "@cutroom/engine";
+import { registerAssetUrl } from "../assets";
+import { isOpfsAvailable, readMediaUrl } from "../media/opfs";
 import { useEditorStore } from "../../store";
 import { useVcsStore } from "../../vcsStore";
 import { usePersistenceStore } from "./persistenceStore";
@@ -16,6 +18,48 @@ import { clearProject, readProject, storageUsage, writeProject } from "./storage
 const SAVE_DEBOUNCE_MS = 700;
 
 /**
+ * Re-register the media for every asset in the restored timeline, so clips
+ * play again after a refresh instead of falling into "not local yet".
+ * Returns a warning when the browser has no private file system, or when
+ * some assets are simply not on disk.
+ */
+async function restoreMedia(
+  timeline: Timeline,
+): Promise<{ restored: number; missing: number; warning: string | null }> {
+  const assetIds = Object.keys(timeline.assets);
+  if (assetIds.length === 0) {
+    return { restored: 0, missing: 0, warning: null };
+  }
+  if (!isOpfsAvailable()) {
+    return {
+      restored: 0,
+      missing: assetIds.length,
+      warning:
+        "this browser has no private file system — stored media cannot be restored",
+    };
+  }
+  let restored = 0;
+  let missing = 0;
+  for (const assetId of assetIds) {
+    const url = await readMediaUrl(assetId);
+    if (url === null) {
+      missing += 1;
+      continue;
+    }
+    registerAssetUrl(assetId, url);
+    restored += 1;
+  }
+  return {
+    restored,
+    missing,
+    warning:
+      missing > 0
+        ? `${missing} of ${assetIds.length} stored media file(s) are not on disk`
+        : null,
+  };
+}
+
+/**
  * Load the project on start, save it after changes (debounced), and report
  * what is going on in the status bar.
  *
@@ -27,6 +71,7 @@ export function useProjectPersistence(): void {
   const setStatus = usePersistenceStore((state) => state.setStatus);
   const setLoadFailure = usePersistenceStore((state) => state.setLoadFailure);
   const setUsage = usePersistenceStore((state) => state.setUsage);
+  const setMediaWarning = usePersistenceStore((state) => state.setMediaWarning);
 
   // Load once, on start.
   useEffect(() => {
@@ -52,6 +97,9 @@ export function useProjectPersistence(): void {
         const project = deserializeProject(result.value);
         useEditorStore.getState().restoreHistory(toHistory(project.history));
         useVcsStore.getState().restoreRepo(toRepo(project.repo));
+        // Put the media back so the restored timeline actually plays.
+        const media = await restoreMedia(project.history.base);
+        if (media.warning !== null) setMediaWarning(media.warning);
         setStatus("saved");
       } catch (error) {        const raw =
           error instanceof ProjectLoadError
@@ -72,7 +120,7 @@ export function useProjectPersistence(): void {
     return () => {
       cancelled = true;
     };
-  }, [setStatus, setLoadFailure, setUsage]);
+  }, [setStatus, setLoadFailure, setUsage, setMediaWarning]);
 
   // Save after changes, debounced.
   useEffect(() => {

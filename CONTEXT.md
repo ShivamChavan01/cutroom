@@ -220,6 +220,17 @@ From Cardboard's hard-problems doc:
   unavailable or a write fails, the app falls back to memory and says so
   in the status bar rather than failing silently. Ctrl+K → "Reset project"
   (with a confirm). Storage-layer tests run against `fake-indexeddb`.
+- **Media persistence**: uploaded files are stored in OPFS (Origin Private
+  File System) keyed by their sha256 asset id, so a clip still plays after a
+  refresh instead of falling into "not local yet". `navigator.storage.
+  estimate()` is checked before writing and a file that does not fit is
+  refused with a message saying how much room is left. Where OPFS is
+  unavailable the app keeps the session-blob-URL behaviour and says so in
+  the status bar. Deleting a clip deletes the file *only* when nothing
+  references the asset any more — the rule is a pure function
+  (`lib/media/references.ts`): a clip in the working timeline, or a clip
+  in any commit's snapshot, is a reference; an asset sitting in the
+  registry with no clip using it is not.
 - **Lint gate**: `lintDelta` wired into the UI in three places —
   the compare view ("introduces N problems, resolves M"), the merge view
   (delta of the merged result against the current timeline, shown *before*
@@ -233,10 +244,16 @@ From Cardboard's hard-problems doc:
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 107 web tests green (14 files: store 4, timeScale 4, timecode 9, playback 5,
+- 117 web tests green (16 files: store 4, timeScale 4, timecode 9, playback 5,
   describeOp 1, vcs 12, swap policy 20, diffView mapping 6, palette 5,
-  commitGraph 12, layout 4, commands 8, persistence 17), `tsc` clean,
-  `vite build` succeeds. Total 205 across the workspace.
+  commitGraph 12, layout 4, commands 8, persistence 17, media 10), `tsc`
+  clean, `vite build` succeeds. Total 215 across the workspace.
+- **Untested by unit tests (browser-only):** the OPFS calls themselves
+  (getDirectory, createWritable, readMediaUrl). jsdom does not implement
+  OPFS and `fake-indexeddb` only covers IndexedDB, so those paths are
+  exercised manually: upload a file, refresh, confirm the clip still
+  plays. The reference-counting rule that decides whether a file may be
+  deleted *is* unit-tested.
 - **Not wired to any UI:** `lib/commands.ts` — the fixed-grammar command
   parser (`split at 2s`, `close gaps`, `goto 1:30`, …) with 8 passing
   tests. The prompt bar that used it was removed as UI that didn't earn
