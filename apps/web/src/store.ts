@@ -42,6 +42,12 @@ export interface EditorStore {
   /** Replace the whole editing session (tests, branch checkout later). */
   readonly loadTimeline: (timeline: Timeline) => void;
   /**
+   * Restore a persisted history (op log + cursor) and the timeline it
+   * implies. Used by persistence on start; the op log is validated before
+   * it gets here.
+   */
+  readonly restoreHistory: (history: History) => void;
+  /**
    * Register an asset without touching the op log. Assets ride in the
    * history base, so undo/redo replay keeps working — the log only holds
    * clip ops, and the base carries everything the log needs to interpret.
@@ -102,6 +108,15 @@ export const useEditorStore = create<EditorStore>()((set) => ({
         ...state.history,
         base: putAsset(state.history.base, asset),
       }),
+    })),
+
+  restoreHistory: (history) =>
+    set((state) => ({
+      ...derive(history),
+      selectedClipId: null,
+      playheadMs: 0,
+      isPlaying: false,
+      authorId: state.authorId,
     })),
 }));
 

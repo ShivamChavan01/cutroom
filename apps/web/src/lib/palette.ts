@@ -1,6 +1,7 @@
 import { type Clip, clipsOnTrack } from "@cutroom/engine";
 import { closeGapsOps } from "./closeGaps";
 import { nextCut, previousCut } from "./timecode";
+import { resetProject } from "./persistence/usePersistence";
 import { useEditorStore } from "../store";
 import { useUiStore } from "../uiStore";
 
@@ -130,6 +131,19 @@ export function buildActions(): PaletteAction[] {
       label: "Redo",
       hint: "Ctrl+Shift+Z",
       run: () => state().redo(),
+    },
+    {
+      id: "reset-project",
+      label: "Reset project",
+      run: () => {
+        if (
+          window.confirm(
+            "Reset the project? The stored project and the undo history are discarded.",
+          )
+        ) {
+          void resetProject();
+        }
+      },
     },
     {
       id: "zoom-in",

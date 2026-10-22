@@ -10,6 +10,7 @@ import { TopBar } from "./components/TopBar";
 import { Inspector } from "./components/Inspector";
 import { Panel, ResizableGroup, ResizeHandle } from "./components/ResizableGroup";
 import { deleteSelected, splitAtPlayhead } from "./lib/actions";
+import { useProjectPersistence } from "./lib/persistence/usePersistence";
 import { useEditorStore } from "./store";
 
 function isTypingTarget(event: KeyboardEvent): boolean {
@@ -34,6 +35,8 @@ function isTypingTarget(event: KeyboardEvent): boolean {
  * All four groups are resizable and their sizes persist per group id.
  */
 export function App() {
+  useProjectPersistence();
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event)) return;

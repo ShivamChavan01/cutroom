@@ -205,6 +205,21 @@ From Cardboard's hard-problems doc:
   comparing any two commits/branches or against the working copy
 - **Export menu**: four real interchange formats (otio / fcpxml / edl /
   cutroom.json), each entry naming the tools that open it and what it loses
+- **Persistence (project metadata)**: history (op log + undo cursor),
+  commits (with parents), branches, HEAD/detached state and asset metadata
+  persist to IndexedDB. The serialization core (`lib/persistence/project.ts`)
+  is pure — no browser globals — with an explicit schema version; unknown
+  versions are rejected with a clear error. Validation *replays* the op log
+  through the engine's own reducer rather than re-implementing the rules,
+  and rejects commits whose parents are missing. Round-trip tests cover a
+  history with a redo tail, merge commits with two parents, detached HEAD,
+  several branches and assets. Saves are debounced (700ms) after changes;
+  the status bar shows saved / saving / unsaved. A corrupt or unreadable
+  store is a *recoverable* failure: the raw text is kept, offered for
+  export, with a reset — the app never crashes on load. If IndexedDB is
+  unavailable or a write fails, the app falls back to memory and says so
+  in the status bar rather than failing silently. Ctrl+K → "Reset project"
+  (with a confirm). Storage-layer tests run against `fake-indexeddb`.
 - **Lint gate**: `lintDelta` wired into the UI in three places —
   the compare view ("introduces N problems, resolves M"), the merge view
   (delta of the merged result against the current timeline, shown *before*
@@ -218,10 +233,10 @@ From Cardboard's hard-problems doc:
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 90 web tests green (12 files: store 4, timeScale 4, timecode 9, playback 5,
+- 107 web tests green (14 files: store 4, timeScale 4, timecode 9, playback 5,
   describeOp 1, vcs 12, swap policy 20, diffView mapping 6, palette 5,
-  commitGraph 12, layout 4, commands 8), `tsc` clean, `vite build`
-  succeeds. Total 188 across the workspace.
+  commitGraph 12, layout 4, commands 8, persistence 17), `tsc` clean,
+  `vite build` succeeds. Total 205 across the workspace.
 - **Not wired to any UI:** `lib/commands.ts` — the fixed-grammar command
   parser (`split at 2s`, `close gaps`, `goto 1:30`, …) with 8 passing
   tests. The prompt bar that used it was removed as UI that didn't earn

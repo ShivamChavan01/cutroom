@@ -54,6 +54,8 @@ interface VcsStore {
     targetLabel: string,
   ) => void;
   readonly clearDiff: () => void;
+  /** Restore a persisted repo (commits, branches, HEAD state). */
+  readonly restoreRepo: (repo: Repo) => void;
 }
 
 export const useVcsStore = create<VcsStore>()((set, get) => ({
@@ -147,6 +149,8 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     }),
 
   clearDiff: () => set({ diffOverlay: null }),
+
+  restoreRepo: (repo) => set({ repo, pending: null, diffOverlay: null }),
 
   commitMerge: (message) => {
     const { repo, pending } = get();
