@@ -5,8 +5,10 @@ import {
   type Timeline,
   applyOps,
   diffTimelines,
+  emptyTimeline,
   makeClip,
   mergeTimelines,
+  putAsset,
   splitChildId,
 } from "./index";
 import { ASSET_DURATION, baseTimeline, clipOn } from "./fixtures.js";
@@ -149,6 +151,56 @@ describe("merge", () => {
     expect([pair.a, pair.b].sort()).toEqual(["c1", "c2"]);
     expect(pair.overlapStart).toBe(9_000);
     expect(pair.overlapEnd).toBe(10_000);
+  });
+
+  it("detects an overlap away from the origin, where asset-local outPoints mislead", () => {
+    // Regression: the overlap sweep once gated on clip.inPoint +
+    // clip.duration (the asset-local clock). Two clips clashing at 30s were
+    // invisible whenever their source media started at 0.
+    const base = applyOps(
+      putAsset(emptyTimeline("merge-offorigin"), {
+        id: "asset-a",
+        kind: "video",
+        duration: 900_000,
+      }),
+      [
+        {
+          type: "addClip",
+          clip: makeClip({
+            id: "c1", trackId: "v1", assetId: "asset-a",
+            start: 10_000, inPoint: 0, duration: 2_000, volume: 1,
+          }),
+        },
+        {
+          type: "addClip",
+          clip: makeClip({
+            id: "c2", trackId: "v1", assetId: "asset-a",
+            start: 30_000, inPoint: 0, duration: 2_000, volume: 1,
+          }),
+        },
+      ],
+    );
+
+    // Ours stretches c1 to end at 31s; theirs pulls c2 back to 29.5s.
+    // Neither side touches the other's clip, so a per-clip merge sees
+    // nothing — the geometric pass must.
+    const ours = applyOps(base, [
+      { type: "trimClip", clipId: "c1", duration: 21_000 },
+    ]);
+    const theirs = applyOps(base, [
+      { type: "moveClip", clipId: "c2", start: 29_500 },
+    ]);
+
+    const result = mergeTimelines(base, ours, theirs);
+    const overlapConflicts = result.conflicts.filter(
+      (c): c is OverlapConflict => c.kind === "overlap",
+    );
+
+    expect(overlapConflicts).toHaveLength(1);
+    const pair = overlapConflicts[0]!;
+    expect([pair.a, pair.b].sort()).toEqual(["c1", "c2"]);
+    expect(pair.overlapStart).toBe(29_500);
+    expect(pair.overlapEnd).toBe(31_000);
   });
 
   it("does not auto-resolve an overlap by shifting a clip", () => {

@@ -47,6 +47,41 @@ describe("lint", () => {
     expect(byRule(t, "overlap")).toEqual([]);
   });
 
+  it("flags an overlap away from the origin, where asset-local outPoints mislead", () => {
+    // Regression: the overlap sweep once gated on clip.inPoint +
+    // clip.duration (the asset-local clock), so a clash at 10s-12s was
+    // invisible whenever the source media started at 0.
+    const t = applyOps(
+      putAsset(emptyTimeline("lint-offorigin"), {
+        id: "asset-a",
+        kind: "video",
+        duration: 60_000,
+      }),
+      [
+        {
+          type: "addClip",
+          clip: makeClip({
+            id: "c1", trackId: "v1", assetId: "asset-a",
+            start: 10_000, inPoint: 0, duration: 2_000, volume: 1,
+          }),
+        },
+        {
+          type: "addClip",
+          clip: makeClip({
+            id: "c2", trackId: "v1", assetId: "asset-a",
+            start: 10_500, inPoint: 0, duration: 2_000, volume: 1,
+          }),
+        },
+      ],
+    );
+
+    const found = byRule(t, "overlap");
+
+    expect(found).toHaveLength(1);
+    expect([...(found[0]?.clipIds ?? [])].sort()).toEqual(["c1", "c2"]);
+    expect(found[0]?.where).toBe(10_500);
+  });
+
   it("flags dead air between consecutive clips", () => {
     const t = clipOn(baseTimeline(), "c2", { start: 12_000 });
 

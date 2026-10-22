@@ -61,6 +61,29 @@ describe("model", () => {
     expect(overlaps(a, { ...b, start: 4_999 })).toBe(true);
   });
 
+  it("compares timeline intervals, not asset-local outPoints, away from the origin", () => {
+    // Regression: overlaps() once compared a.start against clip.inPoint +
+    // clip.duration, so two clips clashing at 10s went undetected whenever
+    // their source media started at 0. Geometry runs on the timeline clock;
+    // outPoint stays asset-local for the player.
+    const a = makeClip({
+      id: "a",
+      trackId: "v1",
+      assetId: "asset-a",
+      start: 10_000,
+      inPoint: 0,
+      duration: 2_000,
+      volume: 1,
+    });
+    const overlapping = { ...a, id: "b", start: 10_500 };
+    const disjoint = { ...a, id: "c", start: 12_000 };
+
+    expect(a.outPoint).toBe(2_000);
+    expect(overlaps(a, overlapping)).toBe(true);
+    expect(overlaps(overlapping, a)).toBe(true);
+    expect(overlaps(a, disjoint)).toBe(false);
+  });
+
   it("reports duration as the furthest clip end", () => {
     const t = add(emptyTimeline(), "c", "v1", 1_000, 2_500);
     expect(timelineDuration(t)).toBe(3_500);

@@ -92,9 +92,14 @@ export function clipsOnTrack(
     .sort((a, b) => a.start - b.start || (a.id < b.id ? -1 : 1));
 }
 
-/** Half-open interval: [start, outPoint). A zero-length gap does not overlap. */
+/**
+ * Half-open interval: [start, start + duration). Timeline clock, not the
+ * asset-local outPoint — a clip that starts at 12s occupies [12s, 14s] on
+ * the timeline even though its asset-local outPoint is 2s. A zero-length
+ * gap does not overlap.
+ */
 export function overlaps(a: Clip, b: Clip): boolean {
-  return a.start < b.outPoint && b.start < a.outPoint;
+  return a.start < b.start + b.duration && b.start < a.start + a.duration;
 }
 
 export function emptyTimeline(id = "untitled"): Timeline {
