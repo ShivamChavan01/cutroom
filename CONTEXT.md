@@ -125,6 +125,20 @@ From Cardboard's hard-problems doc:
   dropped because `setVolume` already rejects out-of-range values — a rule
   that can never fire is decoration. Severity is caller-assigned, so
   proxy-first workflows can downgrade missing-media to a warning
+  - **Diagnostic identity**: every diagnostic carries a `key` —
+    `rule | sorted root clip ids | subject`. Root clip ids (the part before
+    `~`) mean a split child is recognised as the same problem its parent
+    had, so splitting never manufactures a phantom "resolved + introduced".
+    The message and position are deliberately *not* in the key, so a moved
+    clip keeps its identity.
+  - **`lintDelta(before, after, options?)`** → `{ introduced, resolved,
+    unchanged }` — what a change does to the linter's findings. Counts are
+    of *identities*, not raw diagnostics: a split that leaves both children
+    overlapping the same clip yields two diagnostics sharing one key, and
+    for "does this make the project worse?" one identity is the right unit.
+  - Defect-injection tests: 6/6 injected defects caught (overlap, gap,
+    missing-media, trim-past-source, zero-length, flash-frame), 0 false
+    alarms on a clean timeline.
 - `packages/engine/src/otio.ts` — OpenTimelineIO export/import
 - `packages/engine/src/timecode.ts` — canonical `formatTimecode` /
   `frameAt` / `msFromFrame`. Lives in the engine because the export
@@ -137,8 +151,8 @@ From Cardboard's hard-problems doc:
   tracks), `cutroom.ts` (lossless native JSON, versioned, with an
   importer), and `index.ts` — the `EXPORT_FORMATS` registry the UI
   renders. Adding a format = one serializer + one registry entry.
-- 84 Vitest tests green (ops 16 incl. 4 model, history 11, merge 13,
-  lint 16, otio 10, export 18), `tsc --noEmit` clean
+- 98 engine tests green (ops 16 incl. 4 model, history 11, merge 13,
+  lint 16, otio 10, export 18, lintDelta 14), `tsc --noEmit` clean
 - Tests cover: split determinism across branches, clean merge, field
   conflict, the overlap case a naive merge misses, no auto-shift,
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
@@ -191,6 +205,12 @@ From Cardboard's hard-problems doc:
   comparing any two commits/branches or against the working copy
 - **Export menu**: four real interchange formats (otio / fcpxml / edl /
   cutroom.json), each entry naming the tools that open it and what it loses
+- **Lint gate**: `lintDelta` wired into the UI in three places —
+  the compare view ("introduces N problems, resolves M"), the merge view
+  (delta of the merged result against the current timeline, shown *before*
+  the merge is committed, with an explicit "commit it anyway" confirmation
+  when it introduces problems — it warns, it does not block), and the
+  commit panel (delta against the parent commit).
 - UI language: warm orange accent, monospace transcript, keyboard-first.
   Demo seeders and the placeholder "agent" panel were removed as fake UI —
   nothing in the product is a mock.
@@ -201,7 +221,7 @@ From Cardboard's hard-problems doc:
 - 90 web tests green (12 files: store 4, timeScale 4, timecode 9, playback 5,
   describeOp 1, vcs 12, swap policy 20, diffView mapping 6, palette 5,
   commitGraph 12, layout 4, commands 8), `tsc` clean, `vite build`
-  succeeds. Total 174 across the workspace.
+  succeeds. Total 188 across the workspace.
 - **Not wired to any UI:** `lib/commands.ts` — the fixed-grammar command
   parser (`split at 2s`, `close gaps`, `goto 1:30`, …) with 8 passing
   tests. The prompt bar that used it was removed as UI that didn't earn

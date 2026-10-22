@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type Timeline,
   diffTimelines,
+  lintDelta,
 } from "@cutroom/engine";
 import {
   type Repo,
@@ -151,6 +152,18 @@ export function VersionControl() {
     }
   }, [repo, timeline]);
 
+  /**
+   * What the working copy does to the linter's findings, measured against
+   * the commit this one would sit on top of.
+   */
+  const lintDeltaAgainstParent = useMemo(() => {
+    if (repo === null) return null;
+    const parentId = currentCommit(repo).parents[0];
+    const parent = parentId === undefined ? undefined : repo.commits[parentId];
+    if (parent === undefined) return null;
+    return lintDelta(parent.timeline, timeline);
+  }, [repo, timeline]);
+
   if (repo === null) {
     return (
       <section style={{ fontSize: 12, color: "#868e96" }}>
@@ -254,6 +267,34 @@ export function VersionControl() {
           Commit
         </Button>
       </div>
+      {lintDeltaAgainstParent !== null && (
+        <div
+          className="mb-2 text-[11px]"
+          title="Linter findings introduced or resolved by the uncommitted changes, against the commit they would sit on"
+        >
+          {lintDeltaAgainstParent.introduced.length === 0 &&
+          lintDeltaAgainstParent.resolved.length === 0 ? (
+            <span className="text-faint">no change in problems</span>
+          ) : (
+            <>
+              {lintDeltaAgainstParent.introduced.length > 0 && (
+                <span className="text-destructive">
+                  introduces {lintDeltaAgainstParent.introduced.length} problem
+                  {lintDeltaAgainstParent.introduced.length === 1 ? "" : "s"}
+                </span>
+              )}
+              {lintDeltaAgainstParent.introduced.length > 0 &&
+                lintDeltaAgainstParent.resolved.length > 0 && " · "}
+              {lintDeltaAgainstParent.resolved.length > 0 && (
+                <span className="text-success">
+                  resolves {lintDeltaAgainstParent.resolved.length} problem
+                  {lintDeltaAgainstParent.resolved.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <ul style={{ listStyle: "none", margin: "0 0 8px", padding: 0 }}>
         {history.map((commit) => {

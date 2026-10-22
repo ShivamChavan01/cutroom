@@ -23,9 +23,47 @@ import {
 
 export type Severity = "error" | "warning";
 
+/** Three frames at 30fps. Below this a clip is invisible at full speed. */
+export const FLASH_FRAME_THRESHOLD_MS = 100;
+
+/**
+ * Root of a clip id.
+ *
+ * Splitting a clip replaces it with children whose ids embed the parent's
+ * (`parent~4000~L`). Diagnostics that mention a child must still be
+ * recognised as the *same* problem the parent had, otherwise every split
+ * would report a phantom "resolved" plus a phantom "introduced".
+ */
+export function clipRootId(clipId: string): string {
+  const separator = clipId.indexOf("~");
+  return separator === -1 ? clipId : clipId.slice(0, separator);
+}
+
+/**
+ * A diagnostic's stable identity: the rule, the clips involved (as roots,
+ * sorted and de-duplicated) and, for rules about something other than clips
+ * (an unused asset), a subject.
+ *
+ * Deliberately NOT included: the message text and the position. A moved
+ * clip keeps its id, so its diagnostics keep their identity even though
+ * the message and the marker move — that is what lets a diff of two
+ * timelines say "this change did not introduce a new problem" instead of
+ * reporting every diagnostic as new.
+ */
+export function diagnosticKey(
+  rule: string,
+  clipIds: readonly string[],
+  subject?: string,
+): string {
+  const roots = [...new Set(clipIds.map(clipRootId))].sort();
+  return `${rule}|${roots.join(",")}|${subject ?? ""}`;
+}
+
 export interface Diagnostic {
   /** Stable rule id, e.g. "overlap". Used for suppression and overrides. */
   readonly rule: string;
+  /** Stable identity of this problem across two timelines. */
+  readonly key: string;
   readonly severity: Severity;
   /** Clips involved, so the UI can highlight them. Empty for global issues. */
   readonly clipIds: readonly string[];
@@ -88,8 +126,59 @@ export function errorsOnly(diagnostics: readonly Diagnostic[]): Diagnostic[] {
   return diagnostics.filter((d) => d.severity === "error");
 }
 
-/** Three frames at 30fps. Below this a clip is invisible at full speed. */
-export const FLASH_FRAME_THRESHOLD_MS = 100;
+// ---------------------------------------------------------------------------
+// Lint delta: what changed between two timelines
+// ---------------------------------------------------------------------------
+
+export interface LintDelta {
+  /** Problems present after but not before, one per identity. */
+  readonly introduced: readonly Diagnostic[];
+  /** Problems present before but not after, one per identity. */
+  readonly resolved: readonly Diagnostic[];
+  /** How many problem identities exist in both. */
+  readonly unchanged: number;
+}
+
+/**
+ * Compare two timelines' diagnostics by identity.
+ *
+ * Counts are of *identities*, not raw diagnostics. Two diagnostics can
+ * share an identity — a split that leaves both children overlapping the
+ * same clip produces two diagnostics with one key — and for the question
+ * this answers ("does this change make the project worse?") one identity
+ * is the right unit.
+ *
+ * Splitting can never manufacture a new identity: children tile the parent
+ * exactly, so any problem a child has, the parent had too. That is why the
+ * key uses root clip ids.
+ */
+export function lintDelta(
+  before: Timeline,
+  after: Timeline,
+  options: LintOptions = {},
+): LintDelta {
+  const byKey = (timeline: Timeline): Map<string, Diagnostic> => {
+    const map = new Map<string, Diagnostic>();
+    for (const diagnostic of lint(timeline, options)) {
+      if (!map.has(diagnostic.key)) map.set(diagnostic.key, diagnostic);
+    }
+    return map;
+  };
+  const beforeByKey = byKey(before);
+  const afterByKey = byKey(after);
+
+  const introduced: Diagnostic[] = [];
+  const resolved: Diagnostic[] = [];
+  let unchanged = 0;
+  for (const [key, diagnostic] of afterByKey) {
+    if (beforeByKey.has(key)) unchanged += 1;
+    else introduced.push(diagnostic);
+  }
+  for (const [key, diagnostic] of beforeByKey) {
+    if (!afterByKey.has(key)) resolved.push(diagnostic);
+  }
+  return { introduced, resolved, unchanged };
+}
 
 // ---------------------------------------------------------------------------
 // Built-in rules
@@ -116,6 +205,7 @@ const overlapRule = defineRule(
           );
           out.push({
             rule: "overlap",
+            key: diagnosticKey("overlap", [other.id, clip.id]),
             severity: "error",
             clipIds: [other.id, clip.id],
             where: start,
@@ -146,6 +236,7 @@ const gapRule = defineRule(
         if (next.start > gapStart) {
           out.push({
             rule: "gap",
+            key: diagnosticKey("gap", [current.id, next.id]),
             severity: "warning",
             clipIds: [current.id, next.id],
             where: gapStart,
@@ -169,6 +260,7 @@ const missingMediaRule = defineRule(
       if (timeline.assets[clip.assetId] === undefined) {
         out.push({
           rule: "missing-media",
+          key: diagnosticKey("missing-media", [clip.id]),
           severity: "error",
           clipIds: [clip.id],
           where: clip.start,
@@ -189,6 +281,7 @@ const flashFrameRule = defineRule(
       if (clip.duration > 0 && clip.duration < FLASH_FRAME_THRESHOLD_MS) {
         out.push({
           rule: "flash-frame",
+          key: diagnosticKey("flash-frame", [clip.id]),
           severity: "warning",
           clipIds: [clip.id],
           where: clip.start,
@@ -210,6 +303,7 @@ const trimPastSourceRule = defineRule(
       if (asset !== undefined && clip.inPoint + clip.duration > asset.duration) {
         out.push({
           rule: "trim-past-source",
+          key: diagnosticKey("trim-past-source", [clip.id]),
           severity: "error",
           clipIds: [clip.id],
           where: clip.start,
@@ -232,6 +326,7 @@ const zeroLengthRule = defineRule(
       if (clip.duration <= 0) {
         out.push({
           rule: "zero-length",
+          key: diagnosticKey("zero-length", [clip.id]),
           severity: "error",
           clipIds: [clip.id],
           where: clip.start,
@@ -255,6 +350,8 @@ const unusedAssetRule = defineRule(
       if (!referenced.has(id)) {
         out.push({
           rule: "unused-asset",
+          // No clips involved, so the asset id is the subject of the identity.
+          key: diagnosticKey("unused-asset", [], id),
           severity: "warning",
           clipIds: [],
           message: `asset ${id} is not referenced by any clip`,

@@ -3,6 +3,7 @@ import {
   type Timeline,
   applyOps,
   defineRule,
+  diagnosticKey,
   emptyTimeline,
   errorsOnly,
   lint,
@@ -225,6 +226,7 @@ describe("lint", () => {
           .filter((clip) => clip.volume === 0)
           .map((clip) => ({
             rule: "no-silent-clips",
+            key: diagnosticKey("no-silent-clips", [clip.id]),
             severity: "warning" as const,
             clipIds: [clip.id],
             where: clip.start,

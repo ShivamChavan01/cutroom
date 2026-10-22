@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   type MergeResult,
+  lintDelta,
   resolveField,
 } from "@cutroom/engine";
-import { resolveDeleteModify, resolveOverlap } from "../lib/vcs";
+import { currentCommit, resolveDeleteModify, resolveOverlap } from "../lib/vcs";
+import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -94,8 +96,25 @@ function ConflictRow({
  */
 export function MergePanel() {
   const pending = useVcsStore((state) => state.pending);
+  const repo = useVcsStore((state) => state.repo);
   const store = useVcsStore.getState();
+  const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+
+  /**
+   * What the merge does to the linter's findings, measured against what is
+   * on screen now. A merge is not blocked by this — but if it introduces
+   * problems, the user has to say so explicitly before it is committed.
+   */
+  const delta = useMemo(
+    () =>
+      pending === null
+        ? null
+        : lintDelta(timeline, pending.result.merged),
+    [pending, timeline],
+  );
+  const introduces = delta !== null && delta.introduced.length > 0;
 
   if (pending === null) {
     return (
@@ -137,10 +156,15 @@ export function MergePanel() {
         <Button
           size="sm"
           variant="default"
-          disabled={!pending.result.clean || message.trim().length === 0}
+          disabled={
+            !pending.result.clean ||
+            message.trim().length === 0 ||
+            (introduces && !confirmed)
+          }
           onClick={() => {
             store.commitMerge(message.trim());
             setMessage("");
+            setConfirmed(false);
           }}
         >
           Commit merge
@@ -149,6 +173,31 @@ export function MergePanel() {
           Cancel
         </Button>
       </div>
+      {introduces && (
+        <div
+          className="mt-2 rounded-md border border-destructive/50 bg-destructive/10 p-2 text-[12px]"
+        >
+          <div className="text-destructive">
+            This merge introduces {delta?.introduced.length} problem
+            {delta?.introduced.length === 1 ? "" : "s"}:
+          </div>
+          <ul className="m-0 mt-1 list-none p-0">
+            {delta?.introduced.map((diagnostic) => (
+              <li key={diagnostic.key} className="text-muted">
+                [{diagnostic.rule}] {diagnostic.message}
+              </li>
+            ))}
+          </ul>
+          <label className="mt-2 flex items-center gap-1.5 text-muted">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            I understand this merge introduces problems — commit it anyway.
+          </label>
+        </div>
+      )}
     </div>
   );
 }

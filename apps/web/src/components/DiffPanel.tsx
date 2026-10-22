@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { lintDelta } from "@cutroom/engine";
 import { useVcsStore } from "../vcsStore";
 import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
@@ -44,6 +45,16 @@ export function DiffPanel() {
     });
   }, [diffOverlay]);
 
+  // The lint delta: does this comparison introduce or resolve problems?
+  // Computed before the early return so the hook order is stable.
+  const delta = useMemo(
+    () =>
+      diffOverlay === null
+        ? null
+        : lintDelta(diffOverlay.base, diffOverlay.target),
+    [diffOverlay],
+  );
+
   if (diffOverlay === null) {
     return (
       <div className="p-4 text-[13px] text-muted">
@@ -75,6 +86,32 @@ export function DiffPanel() {
           Clear
         </Button>
       </header>
+      {delta !== null && (
+        <div
+          className="mb-3 text-[12px]"
+          title="Problems the linter finds in the base vs the target timeline"
+        >
+          {delta.introduced.length === 0 && delta.resolved.length === 0 ? (
+            <span className="text-muted">no change in problems</span>
+          ) : (
+            <>
+              {delta.introduced.length > 0 && (
+                <span className="text-destructive">
+                  introduces {delta.introduced.length} problem
+                  {delta.introduced.length === 1 ? "" : "s"}
+                </span>
+              )}
+              {delta.introduced.length > 0 && delta.resolved.length > 0 && " · "}
+              {delta.resolved.length > 0 && (
+                <span className="text-success">
+                  resolves {delta.resolved.length} problem
+                  {delta.resolved.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <ul className="m-0 list-none p-0">
         {rows.map((row, index) => (
           <li key={`${row.id}-${index}`} className="mb-1 text-[12px]">

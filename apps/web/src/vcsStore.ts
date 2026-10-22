@@ -28,6 +28,9 @@ export interface DiffOverlay {
   readonly baseLabel: string;
   readonly targetLabel: string;
   readonly diff: Diff;
+  /** The two timelines compared, so the panel can report the lint delta. */
+  readonly base: Timeline;
+  readonly target: Timeline;
 }
 
 interface VcsStore {
@@ -134,7 +137,13 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
 
   setDiff: (base, baseLabel, target, targetLabel) =>
     set({
-      diffOverlay: { baseLabel, targetLabel, diff: diffTimelines(base, target) },
+      diffOverlay: {
+        baseLabel,
+        targetLabel,
+        diff: diffTimelines(base, target),
+        base,
+        target,
+      },
     }),
 
   clearDiff: () => set({ diffOverlay: null }),
