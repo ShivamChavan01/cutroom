@@ -198,9 +198,16 @@ From Cardboard's hard-problems doc:
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 90 web tests green (store, timeScale, playback, describeOp, vcs, swap
-  policy, diffView mapping, palette, commitGraph, layout, upload), `tsc`
-  clean, `vite build` succeeds. Total 174 across the workspace.
+- 90 web tests green (12 files: store 4, timeScale 4, timecode 9, playback 5,
+  describeOp 1, vcs 12, swap policy 20, diffView mapping 6, palette 5,
+  commitGraph 12, layout 4, commands 8), `tsc` clean, `vite build`
+  succeeds. Total 174 across the workspace.
+- **Not wired to any UI:** `lib/commands.ts` — the fixed-grammar command
+  parser (`split at 2s`, `close gaps`, `goto 1:30`, …) with 8 passing
+  tests. The prompt bar that used it was removed as UI that didn't earn
+  its place; the parser is kept as tested core for a future agent bar,
+  but nothing in the product calls it today. `closeGaps` itself is live
+  (Ctrl+K → "Close gaps").
 
 ## Known issues (match reality, not older notes)
 
@@ -237,6 +244,8 @@ From Cardboard's hard-problems doc:
 - **The commit graph draws structure, not media.** A branch with no
   commits of its own has no lane (correctly — there is no fork to draw),
   so a graph of branch pointers alone can look like a single line.
+- **The fixed-grammar command parser is not reachable from the UI.** The
+  prompt bar was removed; `lib/commands.ts` survives only as tested core.
 
 **Not built:**
 - `apps/server` — empty. Sync, commits, blob store.
