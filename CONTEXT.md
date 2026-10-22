@@ -43,24 +43,31 @@ From Cardboard's hard-problems doc:
                     │      │                                             │
                     │  ENGINE (pure TS, no DOM, no React)                │
                     │   model · ops · reducer · undo · diff · merge      │
+                    │   lint · otio · export                             │
                     │      │                         │                   │
                     │  Sync layer (Yjs)          Media layer             │
-                    │   live doc per branch      OPFS cache, worker      │
+                    │   PLANNED, not built        OPFS cache, worker      │
                     │      │                     thumbnails, proxy/full  │
                     └──────┼─────────────────────────┼───────────────────┘
                            │ WebSocket               │ HTTP range requests
                     ┌──────┴─────────────────────────┴───────────────────┐
-                    │  Server (Node + TS)                                │
+                    │  Server (Node + TS)   PLANNED — not built          │
                     │   y-websocket relay · commit/branch API (SQLite)   │
                     │   blob store keyed by hash · ffmpeg proxy job      │
                     └────────────────────────────────────────────────────┘
 ```
+Everything marked PLANNED is a design sketch, not code: there is no
+`apps/server` package, no Yjs dependency, and no sync path. The browser
+side is the whole system today — one browser, one project, no sharing.
 
 **Repo layout:**
 ```
-/packages/engine    pure TS: model, ops, diff, merge, tests (Vitest)
-/apps/web           React + Vite — timeline, player, diff/conflict UI (EMPTY)
-/apps/server        Node: y-websocket, REST, SQLite, blob store (EMPTY)
+/packages/engine    pure TS: model, ops, diff, merge, lint, otio, timecode,
+                   export/ (edl, fcpxml, cutroom) + tests (Vitest)
+/apps/web           React + Vite + Tailwind: editor shell, timeline, player,
+                   diff/merge views, commit graph, export, persistence
+/apps/server        Node: y-websocket, REST, SQLite, blob store
+                   (PLANNED — not built; the directory is empty)
 ```
 
 ### Key design decisions and why
@@ -330,12 +337,12 @@ From Cardboard's hard-problems doc:
 
 - [x] Verification linter in the engine (`lint()` + rules + tests) — DONE
       (`598af3d`); UI rendering of diagnostics DONE (markers + panel)
-- [x] Effect ops in the engine (agent-edit representation) — DEFERRED until
+- [ ] Effect ops in the engine (agent-edit representation) — DEFERRED until
       the player exists to render them; structural ops already work
 - [x] Timeline UI + player: render clips, scrub, split/trim/delete via the
       engine, swap `<video>` src at clip boundaries, preload next clip — DONE
       (`ae853b2`); double-buffered swap shipped later (`79c86c9`)
-- [x] Web Worker for thumbnails/waveform (keep scrubbing smooth) — DEFERRED,
+- [ ] Web Worker for thumbnails/waveform (keep scrubbing smooth) — DEFERRED,
       not needed at prototype scale
 - [x] Commit/branch UI + clip-level diff view on the timeline — DONE
       (`79832e1` branches/commit/checkout/merge; `d85bfea` colour-coded diff
@@ -343,22 +350,35 @@ From Cardboard's hard-problems doc:
 - [x] Commit checkout (detached HEAD) + watch that snapshot — DONE
       (`9c6de39`); commit blocked while detached, branches fork off a viewed
       commit
-- [x] Conflict UI: field conflicts and overlaps as resolvable ghost clips —
-      DONE as a resolution list (`79832e1`); ghost-clip *conflict* rendering
-      on the timeline still open
-- [x] Yjs live collab between two tabs, presence (cursor, playhead, author color)
-      — DEFERRED, needs `apps/server` first; identity plumbing already in
-- [x] Content-addressed asset upload + proxy-first sync + "not local yet"
-      — upload + sha256 + not-local-yet state DONE (`79832e1`); proxy
-      generation and cross-machine sync still open
-- [x] Real perf numbers: engine medians of 3 back-to-back `vitest bench`
-      runs (2026-10-14) — applyOp 0.002 ms (20 clips) / 1.17 ms (1,000
-      clips), diff 0.012 / 0.75 ms, merge 0.08 (20) / 5.75 clean / 5.32
-      conflict @1000 (re-measured after a bench fix; batch ran hot, see
-      PERF.md), lint 0.013 / 0.58 ms. Full per-run table in PERF.md. Player stall and
-      scrub latency stay pending headed-Chrome runs; the 1503 ms stall and
-      33 ms scrub figures are retired (see PERF.md for why). Still open:
-      memory footprint on a genuine 5–10 min 720p timeline
+- [x] Conflict UI: field conflicts and overlaps resolvable — DONE as a
+      resolution list with per-conflict buttons (`79832e1`); the list moves
+      into the Merge editor tab (`e17ec30`)
+- [ ] Ghost-clip *conflict* rendering on the timeline: conflicts resolve
+      from a list today, not in place where the clash is
+- [ ] Yjs live collab between two tabs, presence (cursor, playhead, author
+      color) — DEFERRED, needs `apps/server` first; identity plumbing is in
+- [x] Content-addressed asset upload + "not local yet" state — DONE
+      (`79832e1` upload + sha256; `7f32c02` media persisted in OPFS so
+      clips survive a refresh)
+- [ ] Proxy generation + cross-machine asset sync — OPEN: no proxy
+      transcoding, no server, no blob store
+- [x] Engine perf numbers: medians of 3 back-to-back `vitest bench` runs
+      (2026-10-14) — applyOp 0.002 ms (20 clips) / 1.17 ms (1,000 clips),
+      diff 0.012 / 0.75 ms, merge 0.08 (20) / 5.75 clean / 5.32 conflict
+      @1000 (re-measured after a bench fix; batch ran hot, see PERF.md),
+      lint 0.013 / 0.58 ms. Full per-run table in PERF.md
+- [ ] Player perf numbers (boundary-swap stall, scrub click-to-paint) and
+      memory footprint on a genuine 5–10 min 720p timeline — PENDING headed
+      runs; the 1503 ms stall and 33 ms scrub figures are retired (see
+      PERF.md for why). The harness and the media script are ready
+- [x] Lint gate: `lintDelta` with stable diagnostic identity, wired into
+      the compare view, the merge view (warn + explicit confirm, never
+      blocks) and the commit panel — DONE (`e728c54`)
+- [x] Persistence of project metadata to IndexedDB, with a recoverable
+      corrupt-store path, a memory fallback and Ctrl+K "Reset project" —
+      DONE (`5f20deb`)
+- [x] Persistence of media in OPFS, quota-checked, with reference-counted
+      deletion — DONE (`7f32c02`)
 - [ ] AI layer (deferred, needs an API key): narration of `diff()` output and
       merge conflicts into plain English; lint fix suggestions. Engine stays
       the source of truth — the model narrates or proposes ops, never mutates
@@ -387,10 +407,27 @@ From Cardboard's hard-problems doc:
 
 - Resume: tailored and submitted, leads with MCP Foundry and VoiceScope, no
   fabricated media experience.
-- Application video: unscripted clips fed into Cardboard's own AI editor —
-  demonstrating "an agent makes real edits" as the format itself. Video
-  says the prototype is in progress; this repo is the follow-up once the
-  player + collab work.
+- Application video: the plan was unscripted clips fed into Cardboard's own
+  AI editor — "an agent makes real edits" as the format itself. **Whether
+  that video was recorded is not verifiable from this repo**; treat its
+  status as unknown rather than done. The follow-up this repo is meant to
+  support would show the workflow layer: branch, merge, resolve, verify.
+
+## Persistence limits (what "it saves" does and does not mean)
+
+- **One browser, one project.** Everything lives in the browser's
+  IndexedDB and OPFS. There is no server, no sync and no sharing — two
+  browsers are two unrelated projects. Clearing site data erases the
+  project.
+- **Media size depends on the browser's quota.** `navigator.storage.
+  estimate()` is checked before writing; a file that does not fit is
+  refused with the room left. The quota is the browser's, not ours.
+- **Nothing is encrypted.** Project metadata and media are stored in the
+  browser's private storage in plain form. Fine for a local prototype;
+  not a security boundary.
+- **No export of the raw store.** `.cutroom.json` exports the timeline,
+  not the op log or the media bytes. The only way out of the browser is
+  the timeline formats.
 
 ## Ground rules
 

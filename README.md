@@ -92,6 +92,15 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-174 tests green (84 engine + 90 web), `tsc --noEmit` clean. Honest
+215 tests green (98 engine + 117 web), `tsc --noEmit` clean. Honest
 accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
 (research notes), and PERF.md.
+
+## What it saves, and where
+
+Project metadata (op log, undo cursor, commits, branches, HEAD state) goes
+to IndexedDB; uploaded media goes to OPFS keyed by its content hash, so a
+clip still plays after a refresh. Both are one browser, one project — no
+server, no sync, no sharing, and nothing encrypted. If the browser has no
+private file system the app says so in the status bar rather than losing
+your work quietly.
