@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import { Timeline } from "./Timeline";
 import { DiffPanel } from "./DiffPanel";
 import { MergePanel } from "./MergePanel";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useVcsStore } from "../vcsStore";
 import { type EditorTab, useUiStore } from "../uiStore";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 
 /**
  * Editor area: the timeline plus the diff and merge views, as tabs.
@@ -19,6 +21,7 @@ export function EditorArea() {
   const tabs = useMemo(() => {
     const list: { id: EditorTab; label: string }[] = [
       { id: "timeline", label: "Timeline" },
+      { id: "verification", label: "Verification" },
     ];
     if (diffOverlay !== null) list.push({ id: "diff", label: "Diff" });
     if (pending !== null) list.push({ id: "merge", label: "Merge" });
@@ -30,23 +33,15 @@ export function EditorArea() {
   const active = tabs.some((tab) => tab.id === editorTab) ? editorTab : "timeline";
 
   return (
-    <div className="flex h-full flex-col">
-      <div
-        role="tablist"
+    <Tabs value={active} onValueChange={(value) => { const tab = tabs.find((item) => item.id === value); if (tab !== undefined) openTab(tab.id); }} className="h-full">
+      <TabsList
+        variant="line"
         aria-label="editor views"
-        className="flex shrink-0 items-end gap-1 border-b border-border bg-card px-1.5 pt-1"
       >
         {tabs.map((tab) => (
-          <button
+          <TabsTrigger
             key={tab.id}
-            role="tab"
-            aria-selected={active === tab.id}
-            onClick={() => openTab(tab.id)}
-            className={`rounded-t-md border-b-2 px-3 py-1.5 text-[12px] ${
-              active === tab.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
+            value={tab.id}
           >
             {tab.label}
             {tab.id === "merge" && pending !== null && !pending.result.clean && (
@@ -54,14 +49,15 @@ export function EditorArea() {
                 {pending.result.conflicts.length}
               </span>
             )}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto bg-background p-2.5">
+      </TabsList>
+      <TabsContent value={active} className="flex-1 overflow-auto bg-background">
         {active === "timeline" && <Timeline />}
         {active === "diff" && <DiffPanel />}
         {active === "merge" && <MergePanel />}
-      </div>
-    </div>
+        {active === "verification" && <DiagnosticsPanel />}
+      </TabsContent>
+    </Tabs>
   );
 }

@@ -9,8 +9,8 @@ import { DEFAULT_FPS, frameAt, msFromFrame } from "../timecode";
  * toolchain. It carries more than EDL: assets, a spine, and per-clip
  * offsets, which is what makes a round trip preserve the cut structure.
  *
- * Frame rate is not part of our model, so it is an option (30fps default,
- * matching the editor's timecode readout).
+ * A caller can override the project's frame rate. Older projects default
+ * to 30fps, matching their timecode readout.
  */
 export interface FcpxmlOptions {
   readonly fps?: number;
@@ -33,7 +33,7 @@ function rationalSeconds(frames: number, fps: number): string {
 }
 
 export function toFcpxml(timeline: Timeline, options: FcpxmlOptions = {}): string {
-  const fps = options.fps ?? DEFAULT_FPS;
+  const fps = options.fps ?? timeline.fps ?? DEFAULT_FPS;
   const width = options.width ?? 1920;
   const height = options.height ?? 1080;
 

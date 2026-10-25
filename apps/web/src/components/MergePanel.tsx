@@ -3,8 +3,9 @@ import {
   type MergeResult,
   lintDelta,
   resolveField,
+  resolveProject,
 } from "@cutroom/engine";
-import { currentCommit, resolveDeleteModify, resolveOverlap } from "../lib/vcs";
+import { resolveDeleteModify, resolveOverlap } from "../lib/vcs";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { Button } from "./ui/button";
@@ -19,6 +20,9 @@ function ConflictRow({
   result: MergeResult;
   onResolve: (next: MergeResult) => void;
 }) {
+  if (conflict.kind === "project") {
+    return <li className="merge-project-conflict">Project {conflict.field}: {String(conflict.ours)} / {String(conflict.theirs)}<Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "ours"))}>Keep ours</Button><Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "theirs"))}>Take theirs</Button></li>;
+  }
   if (conflict.kind === "field") {
     return (
       <li className="mb-2 text-[12px]">
@@ -128,7 +132,7 @@ export function MergePanel() {
     <div className="p-3">
       <header className="mb-3 text-[12px] text-muted">
         Merging <strong className="text-foreground">{pending.sourceBranch}</strong>{" "}
-        into <strong className="text-foreground">{pending.sourceBranch}</strong>{" "}
+        into <strong className="text-foreground">{repo?.currentBranch}</strong>{" "}
         (base {pending.baseId}) —{" "}
         {pending.result.clean
           ? "clean, ready to commit"

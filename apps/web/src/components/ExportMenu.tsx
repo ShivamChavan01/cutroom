@@ -3,13 +3,14 @@ import { Download } from "lucide-react";
 import { EXPORT_FORMATS, type ExportFormat } from "@cutroom/engine";
 import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
+import { SidebarMenuButton } from "./ui/sidebar";
 
 /**
  * Export menu. Every entry is a real interchange format the engine
  * serialises — the label says which tools open the file, so nobody has to
  * guess whether they picked the right one.
  */
-export function ExportMenu() {
+export function ExportMenu({ sidebar = false }: { sidebar?: boolean } = {}) {
   const timeline = useEditorStore((state) => state.timeline);
   const [open, setOpen] = useState(false);
   const [lastFormat, setLastFormat] = useState<string | null>(null);
@@ -46,17 +47,18 @@ export function ExportMenu() {
     setLastFormat(format.label);
   };
 
+  const triggerProps = {
+    onClick: () => setOpen((was) => !was),
+    "aria-haspopup": "menu" as const,
+    "aria-expanded": open,
+    title: "Export the timeline",
+  };
+
   return (
     <div className="relative" ref={rootRef}>
-      <Button
-        size="sm"
-        onClick={() => setOpen((was) => !was)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="Export the timeline"
-      >
+      {sidebar ? <SidebarMenuButton {...triggerProps}><Download aria-hidden /><span>Export</span></SidebarMenuButton> : <Button size="sm" {...triggerProps}>
         <Download /> Export
-      </Button>
+      </Button>}
       {open && (
         <div
           role="menu"
@@ -67,7 +69,7 @@ export function ExportMenu() {
               key={format.id}
               role="menuitem"
               onClick={() => download(format)}
-              className="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-[#1a1d22]"
+              className="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-raised"
             >
               <span className="flex items-center gap-2 text-[12px] text-foreground">
                 {format.label}

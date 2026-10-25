@@ -1,4 +1,4 @@
-import type { Clip } from "@cutroom/engine";
+import { clipsOnTrack, type Clip, type Timeline, type Track } from "@cutroom/engine";
 
 /**
  * Playback resolution: which clip owns the playhead, and where inside its
@@ -41,4 +41,45 @@ export function nextClip(
   const index = clips.findIndex((candidate) => candidate.id === clip.id);
   if (index === -1 || index + 1 >= clips.length) return null;
   return clips[index + 1] ?? null;
+}
+
+export interface PlaybackLayer extends ActiveClip {
+  readonly track: Track;
+}
+
+export function resolvePlaybackLayers(
+  timeline: Timeline,
+  playheadMs: number,
+  hiddenTrackIds: readonly string[] = [],
+): readonly PlaybackLayer[] {
+  const layers: PlaybackLayer[] = [];
+  for (const track of timeline.tracks) {
+    if (hiddenTrackIds.includes(track.id)) continue;
+    const active = resolveActiveClip(clipsOnTrack(timeline, track.id), playheadMs);
+    if (active !== null) layers.push({ ...active, track });
+  }
+  return layers;
+}
+
+export function playbackGain(clip: Clip, track: Track, mutedTrackIds: readonly string[] = []): number {
+  return track.muted || mutedTrackIds.includes(track.id)
+    ? 0
+    : Math.min(1, Math.max(0, clip.volume));
+}
+
+export function clipTransform(clip: Clip): string {
+  return `translate(${clip.x ?? 0}px, ${clip.y ?? 0}px) rotate(${clip.rotation ?? 0}deg) scale(${clip.scaleX ?? 1}, ${clip.scaleY ?? 1})`;
+}
+
+export function advancePlayback({
+  at, previousFrame, frame, duration,
+}: {
+  readonly at: number;
+  readonly previousFrame: number | null;
+  readonly frame: number;
+  readonly duration: number;
+}): { readonly time: number; readonly ended: boolean } {
+  const elapsed = previousFrame === null ? 0 : Math.max(0, frame - previousFrame);
+  const time = Math.min(duration, at + elapsed);
+  return { time, ended: time >= duration };
 }

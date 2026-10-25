@@ -19,20 +19,20 @@ export function DiagnosticsPanel() {
     <section
       aria-label="diagnostics"
       style={{
-        border: "1px solid #2c2e33",
+        border: "1px solid var(--color-border)",
         borderRadius: 6,
-        background: "#101114",
+        background: "var(--color-card)",
         padding: "8px 12px",
         marginTop: 12,
         fontSize: 12,
       }}
     >
-      <header style={{ color: "#868e96", marginBottom: 6 }}>
+      <header style={{ color: "var(--color-muted)", marginBottom: 6 }}>
         Linter — {diagnostics.length} issue{diagnostics.length === 1 ? "" : "s"}
         {errors > 0 ? ` (${errors} blocking)` : ""}
       </header>
       {diagnostics.length === 0 ? (
-        <div style={{ color: "#51cf66" }}>Clean — no issues found.</div>
+        <div style={{ color: "var(--color-success)" }}>Clean — no issues found.</div>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {diagnostics.map((diagnostic, index) => (

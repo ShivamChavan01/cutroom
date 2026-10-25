@@ -1,9 +1,12 @@
 import {
+  type Asset,
   type Clip,
   type Millis,
   type Timeline,
   clipsOnTrack,
   overlaps,
+  TRANSFORM_DEFAULTS,
+  TRANSFORM_FIELDS,
 } from "./model";
 
 /**
@@ -34,6 +37,7 @@ const MERGE_FIELDS = [
   "inPoint",
   "duration",
   "volume",
+  ...TRANSFORM_FIELDS,
 ] as const;
 
 export type MergeField = (typeof MERGE_FIELDS)[number];
@@ -64,7 +68,15 @@ export type DeleteModifyConflict = {
   readonly survivor: Clip;
 };
 
-export type Conflict = FieldConflict | OverlapConflict | DeleteModifyConflict;
+export interface ProjectConflict {
+  readonly kind: "project";
+  readonly field: "id" | "fps";
+  readonly base: string | number;
+  readonly ours: string | number;
+  readonly theirs: string | number;
+}
+
+export type Conflict = FieldConflict | OverlapConflict | DeleteModifyConflict | ProjectConflict;
 
 export interface MergeResult {
   readonly merged: Timeline;
@@ -86,7 +98,18 @@ export interface MergeOptions {
 }
 
 function clipFieldsEqual(a: Clip, b: Clip, field: MergeField): boolean {
+  if (field === "x" || field === "y" || field === "scaleX" || field === "scaleY" || field === "rotation") {
+    return (a[field] ?? TRANSFORM_DEFAULTS[field]) === (b[field] ?? TRANSFORM_DEFAULTS[field]);
+  }
   return a[field] === b[field];
+}
+
+function fieldValue(clip: Clip | undefined, field: MergeField): string | number | undefined {
+  if (clip === undefined) return undefined;
+  if (field === "x" || field === "y" || field === "scaleX" || field === "scaleY" || field === "rotation") {
+    return clip[field] ?? TRANSFORM_DEFAULTS[field];
+  }
+  return clip[field];
 }
 
 function clipsEqual(a: Clip, b: Clip): boolean {
@@ -124,9 +147,9 @@ function mergeFields(
       kind: "field",
       clipId: id,
       field,
-      base: base?.[field],
-      ours: ours[field],
-      theirs: theirs[field],
+      base: fieldValue(base, field),
+      ours: fieldValue(ours, field),
+      theirs: fieldValue(theirs, field),
     });
   }
   return withConsistentOutPoint(result);
@@ -264,6 +287,33 @@ function overlapPass(
   return conflicts;
 }
 
+function mergeAsset(base: Asset | undefined, ours: Asset, theirs: Asset): Asset {
+  const merged = { ...ours };
+  const fields = ["kind", "duration", "width", "height", "bytes", "proxyId", "name", "mimeType"] as const;
+  if (base !== undefined) {
+    for (const field of fields) {
+      if (ours[field] === base[field]) Object.assign(merged, { [field]: theirs[field] });
+    }
+  }
+  if (base?.tags !== undefined || ours.tags !== undefined || theirs.tags !== undefined) {
+    const baseTags = new Set(base?.tags ?? []);
+    const ourTags = new Set(ours.tags ?? []);
+    const theirTags = new Set(theirs.tags ?? []);
+    merged.tags = [...new Set([...ourTags, ...theirTags, ...baseTags])].filter((tag) =>
+      ourTags.has(tag) === baseTags.has(tag) ? theirTags.has(tag) : ourTags.has(tag));
+  }
+  return merged;
+}
+
+function mergeAssets(base: Timeline, ours: Timeline, theirs: Timeline): Timeline["assets"] {
+  const assets = { ...theirs.assets, ...ours.assets };
+  for (const [id, ourAsset] of Object.entries(ours.assets)) {
+    const theirAsset = theirs.assets[id];
+    if (theirAsset !== undefined) assets[id] = mergeAsset(base.assets[id], ourAsset, theirAsset);
+  }
+  return assets;
+}
+
 /**
  * Three-way merge of `theirs` into `ours`, relative to their common ancestor
  * `base`.
@@ -280,15 +330,46 @@ export function mergeTimelines(
   const deleted: string[] = [];
 
   const clips = mergePass(base, ours, theirs, conflicts, takenFromTheirs, deleted);
-  conflicts.push(...overlapPass(clips, ours.tracks, maxOverlapConflicts));
+  const tracks = [...ours.tracks];
+  const trackIds = new Set(tracks.map((track) => track.id));
+  for (const track of theirs.tracks) {
+    if (!trackIds.has(track.id)) {
+      tracks.push(track);
+      trackIds.add(track.id);
+    }
+  }
+  conflicts.push(...overlapPass(clips, tracks, maxOverlapConflicts));
+  const merged: Timeline = { ...ours, clips, tracks, assets: mergeAssets(base, ours, theirs) };
+  const id = mergeProjectValue("id", base.id, ours.id, theirs.id, conflicts);
+  const fps = mergeProjectValue("fps", base.fps ?? 30, ours.fps ?? 30, theirs.fps ?? 30, conflicts);
 
   return {
-    merged: { ...ours, clips },
+    merged: { ...merged, id, ...((ours.fps !== undefined || theirs.fps !== undefined) ? { fps } : {}) },
     conflicts,
     takenFromTheirs,
     deleted,
     clean: conflicts.length === 0,
   };
+}
+
+function mergeProjectValue<T extends string | number>(field: "id" | "fps", base: T, ours: T, theirs: T, conflicts: Conflict[]): T {
+  if (ours === theirs || theirs === base) return ours;
+  if (ours === base) return theirs;
+  conflicts.push({ kind: "project", field, base, ours, theirs });
+  return ours;
+}
+
+export function resolveProject(result: MergeResult, field: "id" | "fps", choice: "ours" | "theirs"): MergeResult {
+  const conflict = result.conflicts.find((item): item is ProjectConflict => item.kind === "project" && item.field === field);
+  if (conflict === undefined) return result;
+  const value = conflict[choice];
+  const merged = field === "id" && typeof value === "string"
+    ? { ...result.merged, id: value }
+    : field === "fps" && typeof value === "number"
+      ? { ...result.merged, fps: value }
+      : result.merged;
+  const conflicts = result.conflicts.filter((item) => !(item.kind === "project" && item.field === field));
+  return { ...result, merged, conflicts, clean: conflicts.length === 0 };
 }
 
 /**
@@ -316,12 +397,14 @@ export function resolveField(
   };
   const clips = { ...result.merged.clips, [clipId]: next };
   const remaining = result.conflicts.filter(
-    (c) => !(c.kind === "field" && c.clipId === clipId && c.field === field),
+    (c) => c.kind !== "overlap" && !(c.kind === "field" && c.clipId === clipId && c.field === field),
   );
+  const conflicts = [...remaining, ...overlapPass(clips, result.merged.tracks, 200)];
   return {
     ...result,
     merged: { ...result.merged, clips },
-    conflicts: [...remaining, ...overlapPass(clips, result.merged.tracks, 200)],
+    conflicts,
+    clean: conflicts.length === 0,
   };
 }
 

@@ -1,4 +1,4 @@
-import { type Asset, type Clip, type Timeline, clipsOnTrack } from "./model";
+import { type Asset, type Clip, type Timeline, clipsOnTrack, TRANSFORM_FIELDS, clipIsWellFormed } from "./model";
 
 /**
  * OpenTimelineIO export — the workflow-interchange bridge.
@@ -122,7 +122,10 @@ export function toOTIO(timeline: Timeline): OtioTimeline {
           ),
         },
         metadata: {
-          cutroom: { id: clip.id, assetId: clip.assetId, volume: clip.volume },
+          cutroom: {
+            id: clip.id, assetId: clip.assetId, volume: clip.volume,
+            ...Object.fromEntries(TRANSFORM_FIELDS.filter((field) => clip[field] !== undefined).map((field) => [field, clip[field]])),
+          },
         },
       });
       cursorMs = clip.start + clip.duration;
@@ -140,7 +143,7 @@ export function toOTIO(timeline: Timeline): OtioTimeline {
     name: timeline.id,
     global_start_time: msToRational(0),
     tracks: { OTIO_SCHEMA: "Stack.1", name: "Tracks", children: tracks },
-    metadata: { cutroom: { id: timeline.id } },
+    metadata: { cutroom: { id: timeline.id, assets: timeline.assets, tracks: timeline.tracks, ...(timeline.fps === undefined ? {} : { fps: timeline.fps }) } },
   };
 }
 
@@ -157,7 +160,7 @@ function importAssetId(clip: OtioClip, metadata: Record<string, unknown> | undef
 
 export function fromOTIO(doc: OtioTimeline): Timeline {
   const clips: Record<string, Clip> = {};
-  const assets: Record<string, Asset> = {};
+  const assets = importAssetMetadata(doc.metadata?.cutroom?.assets);
   const trackKinds = new Map<string, "video" | "audio">();
 
   for (const track of doc.tracks.children) {
@@ -177,6 +180,14 @@ export function fromOTIO(doc: OtioTimeline): Timeline {
       );
       const id = child.name;
       const volume = child.metadata?.cutroom?.volume;
+      const transform: Partial<Pick<Clip, "x" | "y" | "scaleX" | "scaleY" | "rotation">> = {};
+      for (const field of TRANSFORM_FIELDS) {
+        const value = child.metadata?.cutroom?.[field];
+        if (value !== undefined) {
+          if (typeof value !== "number") throw new Error(`invalid OTIO transform ${field}`);
+          Object.assign(transform, { [field]: value });
+        }
+      }
       clips[id] = {
         id,
         trackId: track.name,
@@ -186,7 +197,9 @@ export function fromOTIO(doc: OtioTimeline): Timeline {
         duration,
         outPoint: inPoint + duration,
         volume: typeof volume === "number" ? volume : 1,
+        ...transform,
       };
+      if (!clipIsWellFormed(clips[id])) throw new Error(`invalid OTIO clip ${id}`);
       const available = rationalToMs(
         child.media_reference.available_range.duration,
       );
@@ -204,15 +217,48 @@ export function fromOTIO(doc: OtioTimeline): Timeline {
     id: typeof doc.metadata?.cutroom?.id === "string"
       ? doc.metadata.cutroom.id
       : (doc.name ?? "imported"),
+    ...(typeof doc.metadata?.cutroom?.fps === "number" && doc.metadata.cutroom.fps >= 1 && doc.metadata.cutroom.fps <= 120 ? { fps: doc.metadata.cutroom.fps } : {}),
     clips,
     tracks: [...trackKinds].map(([id, kind]) => ({
       id,
       kind,
-      name: id,
-      muted: false,
+      ...importTrackMetadata(doc.metadata?.cutroom?.tracks, id),
     })),
     assets,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function importAssetMetadata(value: unknown): Record<string, Asset> {
+  const assets: Record<string, Asset> = {};
+  if (!isRecord(value)) return assets;
+  for (const [id, asset] of Object.entries(value)) {
+    if (!isRecord(asset) || asset.id !== id || (asset.kind !== "video" && asset.kind !== "audio" && asset.kind !== "image") || typeof asset.duration !== "number" || !Number.isFinite(asset.duration) || asset.duration <= 0) {
+      throw new Error(`invalid OTIO asset metadata ${id}`);
+    }
+    assets[id] = {
+      id, kind: asset.kind, duration: asset.duration,
+      ...(typeof asset.width === "number" ? { width: asset.width } : {}),
+      ...(typeof asset.height === "number" ? { height: asset.height } : {}),
+      ...(typeof asset.bytes === "number" ? { bytes: asset.bytes } : {}),
+      ...(typeof asset.proxyId === "string" ? { proxyId: asset.proxyId } : {}),
+      ...(typeof asset.name === "string" ? { name: asset.name } : {}),
+      ...(typeof asset.mimeType === "string" ? { mimeType: asset.mimeType } : {}),
+      ...(Array.isArray(asset.tags) && asset.tags.every((tag) => typeof tag === "string") ? { tags: asset.tags } : {}),
+    };
+  }
+  return assets;
+}
+
+function importTrackMetadata(value: unknown, id: string): { name: string; muted: boolean } {
+  if (Array.isArray(value)) {
+    const track: unknown = value.find((item: unknown) => isRecord(item) && item.id === id);
+    if (isRecord(track) && typeof track.name === "string" && typeof track.muted === "boolean") return { name: track.name, muted: track.muted };
+  }
+  return { name: id, muted: false };
 }
 
 /** Serialize to the `.otio` JSON text a real editor reads. */

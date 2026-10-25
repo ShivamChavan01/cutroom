@@ -31,7 +31,8 @@ export function StatusBar() {
   const dirty = useMemo(() => {
     if (repo === null) return 0;
     try {
-      return diffTimelines(currentCommit(repo).timeline, timeline).changes.length;
+      const changes = diffTimelines(currentCommit(repo).timeline, timeline);
+      return changes.changes.length + (changes.metadataChanges?.length ?? 0);
     } catch {
       return 0;
     }
@@ -122,7 +123,7 @@ export function StatusBar() {
         )}
         <span className="flex-1" />
         <span className="hidden sm:inline">Ctrl+K commands · S split · Space play</span>
-        <span className="tabular-nums text-foreground">{formatTimecode(playheadMs)}</span>
+        <span className="tabular-nums text-foreground">{formatTimecode(playheadMs, { fps: timeline.fps ?? 30 })}</span>
         <span title="Local author identity">{authorId}</span>
       </footer>
     </>

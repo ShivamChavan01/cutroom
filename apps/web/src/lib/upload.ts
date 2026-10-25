@@ -1,7 +1,8 @@
-import { makeClip, timelineDuration } from "@cutroom/engine";
+import { type Asset } from "@cutroom/engine";
 import { registerAssetUrl } from "./assets";
 import { isOpfsAvailable, writeMedia } from "./media/opfs";
 import { useEditorStore } from "../store";
+import { clipForMedia } from "./mediaLibrary";
 
 /** Short deterministic id when hashing is unavailable. Never silent. */
 async function assetIdFor(file: File): Promise<string> {
@@ -17,18 +18,78 @@ async function assetIdFor(file: File): Promise<string> {
   }
 }
 
-function probeDurationMs(url: string): Promise<number> {
+interface MediaMetadata {
+  readonly duration: number;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+function probeMedia(url: string): Promise<MediaMetadata> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
     video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      const ms = Math.round(video.duration * 1000);
-      URL.revokeObjectURL(video.src);
-      resolve(ms);
+    const timer = setTimeout(() => fail(), 10_000);
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.removeAttribute("src");
+      video.load();
     };
-    video.onerror = () => reject(new Error(`cannot read ${url}`));
+    video.onloadedmetadata = () => {
+      const duration = Math.round(video.duration * 1000);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        fail();
+        return;
+      }
+      const dimensions = video.videoWidth > 0 && video.videoHeight > 0
+        ? { width: video.videoWidth, height: video.videoHeight }
+        : {};
+      cleanup();
+      resolve({ duration, ...dimensions });
+    };
+    const fail = (): void => {
+      cleanup();
+      reject(new Error(`cannot read ${url}`));
+    };
+    video.onerror = fail;
     video.src = url;
   });
+}
+
+function probeImage(url: string): Promise<MediaMetadata> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const timer = setTimeout(() => fail(), 10_000);
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute("src");
+    };
+    const fail = (): void => {
+      cleanup();
+      reject(new Error(`cannot read ${url}`));
+    };
+    image.onload = () => {
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      if (width <= 0 || height <= 0) {
+        fail();
+        return;
+      }
+      cleanup();
+      resolve({ duration: 5_000, width, height });
+    };
+    image.onerror = fail;
+    image.src = url;
+  });
+}
+
+function mediaKind(file: File): Asset["kind"] {
+  if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif|svg)$/i.test(file.name)) return "image";
+  if (file.type.startsWith("audio/") || /\.(mp3|wav|aac|m4a|ogg|flac)$/i.test(file.name)) return "audio";
+  return "video";
 }
 
 export interface UploadReport {
@@ -38,12 +99,6 @@ export interface UploadReport {
   readonly storageWarning: string | null;
 }
 
-/**
- * Add video files. Each file becomes a content-addressed asset (sha256)
- * plus a clip appended after the current end of V1. Object URLs stand in
- * for the real blob store until the asset layer exists. Shared by the
- * file picker and the drop zone so both paths behave identically.
- */
 export async function uploadFiles(
   files: Iterable<File>,
   onStatus?: (status: string | null) => void,
@@ -51,16 +106,15 @@ export async function uploadFiles(
   const added: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
   let storageWarning: string | null = null;
-  for (const file of files) {
-    // Re-read every iteration: each dispatch replaces the timeline, and
-    // a stale snapshot would stack multi-file uploads on top of each other.
-    const store = useEditorStore.getState();
+  for (const file of Array.from(files)) {
     onStatus?.(`reading ${file.name}…`);
+    let url: string | null = null;
     try {
-      const url = URL.createObjectURL(file);
-      const [id, duration] = await Promise.all([
+      url = URL.createObjectURL(file);
+      const kind = mediaKind(file);
+      const [id, metadata] = await Promise.all([
         assetIdFor(file),
-        probeDurationMs(url),
+        kind === "image" ? probeImage(url) : probeMedia(url),
       ]);
 
       // Store the bytes so the clip still plays after a refresh. If the
@@ -76,29 +130,19 @@ export async function uploadFiles(
           "this browser has no private file system — media lasts for this session only";
       }
 
-      store.addAsset({ id, kind: "video", duration, bytes: file.size });
-      registerAssetUrl(id, url);
-      // Re-uploading the same file reuses the asset (content-addressed)
-      // but needs a fresh clip id — the engine rejects duplicates loudly.
-      let clipId = `clip-${id.slice(0, 8)}`;
-      for (let n = 2; store.timeline.clips[clipId] !== undefined; n++) {
-        clipId = `clip-${id.slice(0, 8)}-${n}`;
-      }
-      const at = timelineDuration(store.timeline);
+      // Another import may have changed the timeline while metadata loaded.
+      const store = useEditorStore.getState();
+      const previous = store.timeline.assets[id];
+      store.addAsset({ ...previous, id, kind, ...metadata, name: file.name, mimeType: file.type, bytes: file.size });
+      const clip = clipForMedia(useEditorStore.getState().timeline, id);
       store.dispatch({
         type: "addClip",
-        clip: makeClip({
-          id: clipId,
-          trackId: "v1",
-          assetId: id,
-          start: at,
-          inPoint: 0,
-          duration,
-          volume: 1,
-        }),
+        clip,
       });
-      added.push(clipId);
+      registerAssetUrl(id, url);
+      added.push(clip.id);
     } catch (error) {
+      if (url !== null) URL.revokeObjectURL(url);
       skipped.push({
         name: file.name,
         reason: error instanceof Error ? error.message : "unknown error",

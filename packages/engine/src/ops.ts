@@ -3,6 +3,8 @@ import {
   type Clip,
   type Millis,
   type Timeline,
+  type Track,
+  TRANSFORM_FIELDS,
   clipIsWellFormed,
   outPointOf,
 } from "./model";
@@ -31,7 +33,11 @@ export type Op =
       readonly start: Millis;
       readonly trackId?: string;
     }
-  | { readonly type: "setVolume"; readonly clipId: string; readonly volume: number };
+  | { readonly type: "setVolume"; readonly clipId: string; readonly volume: number }
+  | { readonly type: "setTransform"; readonly clipId: string; readonly x?: number; readonly y?: number; readonly scaleX?: number; readonly scaleY?: number; readonly rotation?: number }
+  | { readonly type: "addTrack"; readonly track: Track }
+  | { readonly type: "setFrameRate"; readonly fps: number }
+  | { readonly type: "renameProject"; readonly name: string };
 
 export interface OpEnvelope {
   readonly op: Op;
@@ -222,10 +228,54 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
 
     case "setVolume": {
       const clip = mustClip(timeline, op.clipId);
-      if (op.volume < 0 || op.volume > 1) {
+      if (!Number.isFinite(op.volume) || op.volume < 0 || op.volume > 1) {
         throw new Error(`applyOp: volume ${op.volume} outside [0, 1]`);
       }
       return writeClip(timeline, { ...clip, volume: op.volume });
+    }
+
+    case "setTransform": {
+      const clip = mustClip(timeline, op.clipId);
+      const transform: Partial<Pick<Clip, "x" | "y" | "scaleX" | "scaleY" | "rotation">> = {};
+      for (const field of TRANSFORM_FIELDS) {
+        const value = op[field];
+        if (value !== undefined) {
+          if (!Number.isFinite(value) || ((field === "scaleX" || field === "scaleY") && (value <= 0 || value > 20))) {
+            throw new Error(`applyOp: invalid transform ${field} ${value}`);
+          }
+          Object.assign(transform, { [field]: value });
+        }
+      }
+      return writeClip(timeline, { ...clip, ...transform });
+    }
+
+    case "addTrack": {
+      const track = op.track;
+      const prefix = track.kind === "video" ? "v" : "a";
+      if ((track.kind !== "video" && track.kind !== "audio") || !new RegExp(`^${prefix}[1-9][0-9]*$`).test(track.id) || track.name.trim().length === 0 || typeof track.muted !== "boolean") {
+        throw new Error(`applyOp: invalid track ${track.id}`);
+      }
+      const existing = timeline.tracks.find((candidate) => candidate.id === track.id);
+      if (existing !== undefined) {
+        if (existing.kind !== track.kind || existing.name !== track.name || existing.muted !== track.muted) {
+          throw new Error(`applyOp: track ${track.id} already exists with different properties`);
+        }
+        return timeline;
+      }
+      return { ...timeline, tracks: [...timeline.tracks, track] };
+    }
+
+    case "setFrameRate": {
+      if (!Number.isInteger(op.fps) || op.fps < 1 || op.fps > 120) {
+        throw new Error(`applyOp: invalid frame rate ${op.fps}`);
+      }
+      return { ...timeline, fps: op.fps };
+    }
+
+    case "renameProject": {
+      const name = op.name.trim();
+      if (name.length === 0 || name.length > 200) throw new Error("applyOp: project name must contain 1 to 200 characters");
+      return { ...timeline, id: name };
     }
   }
 }

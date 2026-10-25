@@ -1,4 +1,4 @@
-import { type Clip, type Timeline } from "./model";
+import { type Asset, type Clip, type Timeline, TRANSFORM_DEFAULTS, TRANSFORM_FIELDS } from "./model";
 
 /**
  * Clip-level diff between two timelines.
@@ -35,6 +35,7 @@ export interface Diff {
   readonly removed: number;
   readonly changed: number;
   readonly unchanged: number;
+  readonly metadataChanges?: readonly ("id" | "fps" | "tracks" | "assets")[];
 }
 
 function samePosition(a: Clip, b: Clip): boolean {
@@ -47,7 +48,35 @@ function samePosition(a: Clip, b: Clip): boolean {
  * inPoint + duration, so including it would report a phantom change on every
  * trim.
  */
-const EDITABLE_FIELDS = ["assetId", "inPoint", "duration", "volume"] as const;
+const EDITABLE_FIELDS = ["assetId", "inPoint", "duration", "volume", ...TRANSFORM_FIELDS] as const;
+
+function equalClipField(a: Clip, b: Clip, field: (typeof EDITABLE_FIELDS)[number]): boolean {
+  if (field === "x" || field === "y" || field === "scaleX" || field === "scaleY" || field === "rotation") {
+    return (a[field] ?? TRANSFORM_DEFAULTS[field]) === (b[field] ?? TRANSFORM_DEFAULTS[field]);
+  }
+  return a[field] === b[field];
+}
+
+function sameAsset(a: Asset | undefined, b: Asset | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  const fields = ["id", "kind", "duration", "width", "height", "bytes", "proxyId", "name", "mimeType"] as const;
+  return fields.every((field) => a[field] === b[field]) &&
+    (a.tags ?? []).length === (b.tags ?? []).length &&
+    (a.tags ?? []).every((tag, index) => tag === b.tags?.[index]);
+}
+
+function metadataChanges(before: Timeline, after: Timeline): NonNullable<Diff["metadataChanges"]> {
+  const changes: ("id" | "fps" | "tracks" | "assets")[] = [];
+  if (before.id !== after.id) changes.push("id");
+  if ((before.fps ?? 30) !== (after.fps ?? 30)) changes.push("fps");
+  if (before.tracks.length !== after.tracks.length || before.tracks.some((track, index) => {
+    const next = after.tracks[index];
+    return next === undefined || track.id !== next.id || track.kind !== next.kind || track.name !== next.name || track.muted !== next.muted;
+  })) changes.push("tracks");
+  const assetIds = new Set([...Object.keys(before.assets), ...Object.keys(after.assets)]);
+  if ([...assetIds].some((id) => !sameAsset(before.assets[id], after.assets[id]))) changes.push("assets");
+  return changes;
+}
 
 export function diffTimelines(before: Timeline, after: Timeline): Diff {
   const beforeIds = Object.keys(before.clips);
@@ -65,7 +94,7 @@ export function diffTimelines(before: Timeline, after: Timeline): Diff {
       continue;
     }
     if (samePosition(prev, next)) {
-      const fields = EDITABLE_FIELDS.filter((field) => prev[field] !== next[field]);
+      const fields = EDITABLE_FIELDS.filter((field) => !equalClipField(prev, next, field));
       const deltaIn = next.inPoint - prev.inPoint;
       const deltaDuration = next.duration - prev.duration;
       if (deltaIn !== 0 || deltaDuration !== 0) {
@@ -114,10 +143,12 @@ export function diffTimelines(before: Timeline, after: Timeline): Diff {
       (c) => c.kind !== "added" && c.kind !== "removed",
     ).length,
     unchanged,
+    metadataChanges: metadataChanges(before, after),
   };
 }
 
 /** Was `before` derived from `after` with no divergent edits? Cheap ancestor check. */
 export function isUnchanged(before: Timeline, after: Timeline): boolean {
-  return diffTimelines(before, after).changes.length === 0;
+  const diff = diffTimelines(before, after);
+  return diff.changes.length === 0 && (diff.metadataChanges?.length ?? 0) === 0;
 }

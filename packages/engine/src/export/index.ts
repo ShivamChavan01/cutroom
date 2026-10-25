@@ -31,7 +31,7 @@ export const EXPORT_FORMATS: readonly ExportFormat[] = [
     mime: "application/json",
     opens: "Premiere, Resolve, Blender",
     description:
-      "The interchange format built for editorial pipelines. Carries tracks, assets and clip structure.",    serialize: (timeline) => stringifyOTIO(timeline),
+      "Carries timeline structure. Cutroom metadata preserves transforms; other editors may ignore them.",    serialize: (timeline) => stringifyOTIO(timeline),
   },
   {
     id: "fcpxml",
@@ -40,7 +40,7 @@ export const EXPORT_FORMATS: readonly ExportFormat[] = [
     mime: "application/xml",
     opens: "Final Cut Pro, Premiere, Resolve",
     description:
-      "What Final Cut writes. One file opens in the whole professional toolchain. Gaps between clips on a track are dropped — Final Cut has no gaps.",
+      "Timeline interchange. Gaps between clips on a track and visual transforms are omitted.",
     serialize: (timeline) => toFcpxml(timeline),
   },
   {

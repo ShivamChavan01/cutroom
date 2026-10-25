@@ -18,6 +18,7 @@ import {
   undo as historyUndo,
 } from "@cutroom/engine";
 import { getOrCreateAuthorId } from "./lib/identity";
+import { useUiStore } from "./uiStore";
 
 export interface EditorStore {
   readonly history: History;
@@ -68,9 +69,16 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   authorId: getOrCreateAuthorId(),
 
   dispatch: (op) =>
-    set((state) => ({
-      ...derive(record(state.history, op, state.authorId)),
-    })),
+    set((state) => {
+      const id = "clipId" in op ? op.clipId : op.type === "addClip" ? op.clip.id : undefined;
+      const sourceTrack = id === undefined ? undefined : state.timeline.clips[id]?.trackId;
+      const destinationTrack = op.type === "addClip" ? op.clip.trackId : op.type === "moveClip" ? op.trackId : undefined;
+      const locked = useUiStore.getState().lockedTrackIds;
+      if ((sourceTrack !== undefined && locked.includes(sourceTrack)) || (destinationTrack !== undefined && locked.includes(destinationTrack))) {
+        throw new Error("This track is locked. Unlock it before editing.");
+      }
+      return derive(record(state.history, op, state.authorId));
+    }),
 
   undo: () =>
     set((state) =>

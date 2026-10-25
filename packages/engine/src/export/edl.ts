@@ -23,7 +23,7 @@ function edlTrack(trackId: string): "V" | "A" {
 }
 
 export function toEdl(timeline: Timeline, options: EdlOptions = {}): string {
-  const fps = options.fps ?? DEFAULT_FPS;
+  const fps = options.fps ?? timeline.fps ?? DEFAULT_FPS;
   const lines: string[] = [
     `TITLE: ${options.title ?? timeline.id ?? "CUTROOM"}`,
     "FCM: NON-DROP FRAME",

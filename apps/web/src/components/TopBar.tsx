@@ -9,20 +9,22 @@ import { Badge } from "./ui/badge";
 export function TopBar() {
   const authorId = useEditorStore((state) => state.authorId);
   const repo = useVcsStore((state) => state.repo);
+  const projectId = useEditorStore((state) => state.timeline.id);
   const detachedAt = repo?.detachedAt ?? null;
   const branch = detachedAt ?? repo?.currentBranch ?? "—";
 
   return (
-    <header className="flex shrink-0 items-center gap-2.5 border-b border-border bg-card px-3.5 py-2">
-      <span className="text-[15px] font-bold">Cutroom</span>
+    <header className="studio-topbar">
+      <div className="studio-brand"><span>cutroom<span className="studio-brand-dot">.</span></span></div>
+      <div className="studio-project"><span className="studio-project-type">VIDEO PROJECT</span><span>{projectId === "untitled" ? "Untitled project" : projectId}</span></div>
       <Badge title={detachedAt !== null ? "Detached HEAD" : "Current branch"}>
         ⎇ {branch}
       </Badge>
-      <span className="flex-1" />
+      <span className="studio-topbar-spacer" />
       <UploadButton icon={<Upload />} label="Add video" />
       <ExportMenu />
       <span title="Local author identity" className="text-xs text-muted">
-        {authorId}
+        <span className="studio-avatar">{authorId.slice(0, 1).toUpperCase()}</span>
       </span>
     </header>
   );

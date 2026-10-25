@@ -27,5 +27,13 @@ export function describeOp(op: Op): string {
       return `moved ${op.clipId} to ${seconds(op.start)}${op.trackId !== undefined ? ` on ${op.trackId}` : ""}`;
     case "setVolume":
       return `set ${op.clipId} volume to ${op.volume}`;
+    case "setTransform":
+      return `transformed ${op.clipId}`;
+    case "addTrack":
+      return `added track ${op.track.name}`;
+    case "setFrameRate":
+      return `set timeline to ${op.fps} fps`;
+    case "renameProject":
+      return `renamed project to ${op.name}`;
   }
 }

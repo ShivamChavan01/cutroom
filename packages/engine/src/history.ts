@@ -85,6 +85,10 @@ export function authorsByClip(history: History): Map<string, string> {
       case "deleteClip":
         authors.delete(op.clipId);
         break;
+      case "addTrack":
+      case "setFrameRate":
+      case "renameProject":
+        break;
       default:
         if (authors.has(op.clipId) === false) {
           authors.set(op.clipId, author);

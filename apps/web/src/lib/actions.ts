@@ -1,5 +1,6 @@
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
+import { useUiStore } from "../uiStore";
 import { deleteMedia } from "./media/opfs";
 import { isAssetReferenced } from "./media/references";
 
@@ -15,6 +16,7 @@ export function splitAtPlayhead(): boolean {
   if (selectedClipId === null) return false;
   const clip = timeline.clips[selectedClipId];
   if (clip === undefined) return false;
+  if (useUiStore.getState().lockedTrackIds.includes(clip.trackId)) return false;
   // Engine op takes a clip-local offset; the UI thinks in timeline time.
   const at = playheadMs - clip.start;
   if (at <= 0 || at >= clip.duration) return false;
@@ -26,6 +28,7 @@ export function deleteSelected(): boolean {
   const { selectedClipId, dispatch, selectClip } = useEditorStore.getState();
   if (selectedClipId === null) return false;
   const clip = useEditorStore.getState().timeline.clips[selectedClipId];
+  if (clip !== undefined && useUiStore.getState().lockedTrackIds.includes(clip.trackId)) return false;
   dispatch({ type: "deleteClip", clipId: selectedClipId });
   selectClip(null);
   if (clip !== undefined) {
@@ -45,5 +48,6 @@ export function canSplitAtPlayhead(): boolean {
   if (selectedClipId === null) return false;
   const clip = timeline.clips[selectedClipId];
   if (clip === undefined) return false;
+  if (useUiStore.getState().lockedTrackIds.includes(clip.trackId)) return false;
   return playheadMs > clip.start && playheadMs < clip.start + clip.duration;
 }

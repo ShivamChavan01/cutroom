@@ -16,6 +16,10 @@ export type Millis = number;
 /** Ordered list of track ids. Order is the only positional data in the model. */
 export type TrackIds = readonly string[];
 
+export const TRANSFORM_DEFAULTS = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 } as const;
+export type TransformField = keyof typeof TRANSFORM_DEFAULTS;
+export const TRANSFORM_FIELDS: readonly TransformField[] = ["x", "y", "scaleX", "scaleY", "rotation"];
+
 export interface Clip {
   /** Stable, content-derived identity. Never positional. */
   readonly id: string;
@@ -31,6 +35,11 @@ export interface Clip {
   readonly volume: number;
   /** Asset-local end offset. Derived from inPoint + duration, cached for reads. */
   readonly outPoint: Millis;
+  readonly x?: number;
+  readonly y?: number;
+  readonly scaleX?: number;
+  readonly scaleY?: number;
+  readonly rotation?: number;
 }
 
 export interface Track {
@@ -48,7 +57,7 @@ export interface Track {
  */
 export interface Asset {
   readonly id: string;
-  readonly kind: "video" | "audio";
+  readonly kind: "video" | "audio" | "image";
   /** Duration of the full source file. Needed to validate trims. */
   readonly duration: Millis;
   readonly width?: number;
@@ -56,10 +65,14 @@ export interface Asset {
   readonly bytes?: number;
   /** Content-hash of the low-res proxy, if one has been generated. */
   readonly proxyId?: string;
+  readonly name?: string;
+  readonly mimeType?: string;
+  readonly tags?: readonly string[];
 }
 
 export interface Timeline {
   readonly id: string;
+  readonly fps?: number;
   readonly clips: Readonly<Record<string, Clip>>;
   readonly tracks: readonly Track[];
   readonly assets: Readonly<Record<string, Asset>>;
@@ -70,7 +83,11 @@ export function clipIsWellFormed(clip: Clip): boolean {
   return (
     clip.duration > 0 &&
     clip.inPoint >= 0 &&
-    clip.outPoint === clip.inPoint + clip.duration
+    clip.outPoint === clip.inPoint + clip.duration &&
+    TRANSFORM_FIELDS.every((field) => {
+      const value = clip[field] ?? TRANSFORM_DEFAULTS[field];
+      return Number.isFinite(value) && (!(field === "scaleX" || field === "scaleY") || (value > 0 && value <= 20));
+    })
   );
 }
 

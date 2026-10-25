@@ -1,4 +1,9 @@
 import { useEffect } from "react";
+import { ChevronDown, ShieldCheck } from "lucide-react";
+import { useUiStore } from "./uiStore";
+import { VersionRail } from "./components/VersionRail";
+import { ProjectSettings } from "./components/ProjectSettings";
+import { readViewPreferences, writeViewPreferences } from "./lib/viewPreferences";
 import { Preview } from "./components/Preview";
 import { EditorArea } from "./components/EditorArea";
 import { BottomPanel } from "./components/BottomPanel";
@@ -23,19 +28,21 @@ function isTypingTarget(event: KeyboardEvent): boolean {
   );
 }
 
-/**
- * Editor shell.
- *
- *   TopBar
- *   ├─ ActivityBar (icon rail) │ centre │ Inspector
- *   ├─ workspace group: [centre column: preview / editor tabs] │ inspector
- *   ├─ Bottom panel (Issues / Activity)
- *   └─ StatusBar
- *
- * All four groups are resizable and their sizes persist per group id.
- */
 export function App() {
   useProjectPersistence();
+  const rail = useUiStore((state) => state.rail);
+  const reviewOpen = useUiStore((state) => state.reviewOpen);
+  const setReviewOpen = useUiStore((state) => state.setReviewOpen);
+
+  useEffect(() => {
+    let storage: Storage;
+    try { storage = window.localStorage; } catch { return; }
+    const saved = readViewPreferences(storage);
+    if (saved !== null) useUiStore.setState(saved);
+    return useUiStore.subscribe((state, previous) => {
+      if (state.hiddenTrackIds !== previous.hiddenTrackIds || state.mutedTrackIds !== previous.mutedTrackIds || state.lockedTrackIds !== previous.lockedTrackIds) writeViewPreferences(storage, state);
+    });
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -66,75 +73,57 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="studio-shell editorial-shell flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TopBar />
       <CommandPalette />
+      <div className="editorial-body">
+      <ActivityBar />
+      <div className="editorial-workspace">
       <ResizableGroup
-        groupId="workspace"
+        groupId="editorial-workspace"
         orientation="vertical"
-        panelIds={["workspace", "bottom"]}
-        defaultLayout={{ workspace: 74, bottom: 26 }}
-        minSize={20}
+        panelIds={["monitors", "sequence"]}
+        defaultLayout={{ monitors: 63, sequence: 37 }}
       >
-        <Panel id="workspace" minSize={30}>
-          <div className="flex h-full min-h-0">
-            <ActivityBar />
-            <ResizableGroup
-              groupId="shell"
-              orientation="horizontal"
-              panelIds={["side", "centre", "inspector"]}
-              defaultLayout={{ side: 18, centre: 62, inspector: 20 }}
-              minSize={10}
-            >
-              <Panel id="side" minSize={10}>
-                <aside
-                  aria-label="side panel"
-                  className="h-full overflow-y-auto border-r border-border bg-card p-3"
-                >
-                  <SidePanel />
+        <Panel id="monitors" minSize={30}>
+          <ResizableGroup
+            groupId="editorial-monitors"
+            orientation="horizontal"
+            panelIds={["library", "viewer", "properties"]}
+            defaultLayout={{ library: 28, viewer: 49, properties: 23 }}
+          >
+            <Panel id="library" minSize={18}>
+              <div className="studio-library">
+                <aside aria-label="side panel" className="studio-library-content">
+                  {rail === "settings" ? <ProjectSettings /> : <SidePanel />}
                 </aside>
-              </Panel>
-              <ResizeHandle orientation="vertical" />
-              <Panel id="centre" minSize={30}>
-                <ResizableGroup
-                  groupId="centre"
-                  orientation="vertical"
-                  panelIds={["preview", "editor"]}
-                  defaultLayout={{ preview: 46, editor: 54 }}
-                  minSize={15}
-                >
-                  <Panel id="preview" minSize={20}>
-                    <div className="h-full overflow-y-auto p-3">
-                      <Preview />
-                    </div>
-                  </Panel>
-                  <ResizeHandle orientation="horizontal" />
-                  <Panel id="editor" minSize={20}>
-                    <div className="h-full overflow-hidden">
-                      <EditorArea />
-                    </div>
-                  </Panel>
-                </ResizableGroup>
-              </Panel>
-              <ResizeHandle orientation="vertical" />
-              <Panel id="inspector" minSize={14}>
-                <aside
-                  aria-label="inspector"
-                  className="h-full overflow-y-auto border-l border-border bg-card p-3"
-                >
-                  <Inspector />
-                </aside>
-              </Panel>
-            </ResizableGroup>
-          </div>
+              </div>
+            </Panel>
+            <ResizeHandle orientation="vertical" />
+            <Panel id="viewer" minSize={35}>
+              <div className="studio-viewer"><Preview /></div>
+            </Panel>
+            <ResizeHandle orientation="vertical" />
+            <Panel id="properties" minSize={17}>
+              <aside aria-label="inspector" className="studio-properties"><Inspector /></aside>
+            </Panel>
+          </ResizableGroup>
         </Panel>
         <ResizeHandle orientation="horizontal" />
-        <Panel id="bottom" minSize={8}>
-          <div className="h-full overflow-hidden">
-            <BottomPanel />
-          </div>
+        <Panel id="sequence" minSize={25}>
+          <section aria-label="Sequence workspace" className="studio-sequence"><VersionRail /><div className="editorial-timeline"><EditorArea /></div></section>
         </Panel>
       </ResizableGroup>
+      </div>
+      </div>
+      <section className={`studio-review${reviewOpen ? " is-open" : ""}`} aria-label="Review drawer">
+        <button type="button" className="studio-review-toggle" aria-expanded={reviewOpen} onClick={() => setReviewOpen(!reviewOpen)}>
+          <ShieldCheck size={13} aria-hidden /> Review
+          <span>Verification & activity</span>
+          <ChevronDown size={13} aria-hidden />
+        </button>
+        <div className="studio-review-content" hidden={!reviewOpen}><BottomPanel /></div>
+      </section>
       <StatusBar />
     </div>
   );

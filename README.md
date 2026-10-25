@@ -18,20 +18,28 @@ own hard problems with working code instead of claims:
 - **Linter**: `lint()` with a rule harness (`defineRule`) and 7 built-in
   structural rules — overlap, gap, missing-media, flash-frame,
   trim-past-source, zero-length, unused-asset. Severity is caller-assigned.
-- **Web UI** (`apps/web`): a VS Code-shaped shell — activity-bar rail
-  (Media / Versions / Issues), resizable panels persisted per group id,
-  editor tabs (Timeline / Diff / Merge), bottom panel (Issues / Activity),
-  status line, and a Ctrl+K command palette. Inside it: timeline with
-  ruler, track headers and a draggable playhead; a double-buffered
-  `<video>` player that swaps sources at cut boundaries; split/trim/delete;
-  blame dots; a session-transcript activity feed; video upload (sha256
-  asset ids); and a git workflow — commits, branches, checkout, a visual
-  commit graph, and merge with per-conflict resolution.
+- **Web UI** (`apps/web`): a dark editorial workspace with searchable
+  media, grid/list views, editable tags, footage/graphics/sequences tabs,
+  a program monitor and a full-width timeline. Import video, audio and
+  images; edit clip position, linked or independent scale, rotation, trim,
+  start time and volume. Add video tracks, drag clips, hide/mute/lock tracks,
+  zoom or fit the timeline, and use preview zoom/fullscreen. Clip, Sequence
+  and Project inspector tabs include project naming and frame-rate settings.
+  Resizable panels, verification, a Review drawer, command palette,
+  undo/redo, blame and activity sit alongside commits, branches, a visual
+  commit graph, diffs and merge conflict resolution. The version rail can
+  fork a version while preserving current edits.
+- **Layered preview**: per-track double-buffered native video/audio,
+  image layers and CSS transforms. Video tracks composite in track order;
+  playback continues across cuts and gaps. Workspace track visibility,
+  mute and locks persist locally; creative edits are versioned.
 - **Four export formats** (engine-side pure functions): `.otio`
   (OpenTimelineIO), `.fcpxml` (Final Cut Pro XML), `.edl` (CMX3600) and
   a lossless `.cutroom.json`. The export menu names the tools each one
   opens in and what it loses. These are timelines, not rendered video —
-  there is no compositor or encoder yet.
+  there is no video encoder. Native JSON preserves all timeline fields;
+  OTIO preserves transforms as Cutroom metadata. EDL/FCPXML do not reproduce
+  visual transforms.
 
 ## Numbers
 
@@ -60,8 +68,8 @@ merge UI is. Collab infra (`apps/server`) is not built yet.
 
 ## Deliberate cuts
 
-- **Multi-track compositing, transitions, effects rendering** — the player
-  swaps `<video>` sources at boundaries; no canvas/WebGL pipeline.
+- **Transitions and effects rendering** — the preview layers native media
+  with CSS transforms; there is no canvas/WebGL effects pipeline.
 - **Pixel-level diff/merge** — by design, never planned. The engine tracks
   timeline structure; content edits must arrive as parameterized ops.
 - **Auth** — localStorage guest identity; presence-ready, login-free.
@@ -92,9 +100,40 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-215 tests green (98 engine + 117 web), `tsc --noEmit` clean. Honest
+391 tests green (136 engine + 255 web), `tsc --noEmit` clean. Honest
 accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
 (research notes), and PERF.md.
+
+Tabs use the shadcn composition with Radix primitives for keyboard navigation,
+focus and linked panels. The dark palette has text-contrast regressions;
+verification colours and timeline lanes share the same emitted CSS tokens.
+
+Browser regression checks live in `scripts/verify-editor.mjs`. They use
+Playwright with installed Google Chrome and a fresh browser context for
+each flow. Start the local editor, provide two short demo MP4s, and run:
+
+```sh
+EDITOR_URL=http://127.0.0.1:5186 \
+TEST_VIDEO_A=/path/to/short-a.mp4 \
+TEST_VIDEO_B=/path/to/short-b.mp4 \
+node scripts/verify-editor.mjs
+```
+
+If Playwright is installed outside this repo, set `PLAYWRIGHT_MODULE` to
+its absolute `index.mjs` path. The original-video check also uses
+`apps/web/public/test-a.mp4`. The checks cover upload playback, media
+restoration after refresh, playback across a cut, split and undo/redo,
+merge conflicts, verification warnings and a persisted merge commit.
+They also check preview fit and sidebar control bounds at desktop and
+laptop widths.
+Screenshots and observations are written to a fresh `.gstack/media-fix-*`
+directory. These checks do not measure playback performance.
+
+`scripts/verify-editorial.mjs` checks the editorial controls with real
+media: search/tags, transforms, volume, track controls, trim/drag/zoom,
+graphics, fullscreen, project settings, version creation, download and
+refresh recovery. Use the same environment variables plus
+`TEST_GRAPHIC=/path/to/image.jpg`.
 
 ## What it saves, and where
 

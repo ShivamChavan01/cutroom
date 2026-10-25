@@ -4,6 +4,7 @@ import { ActivityFeed } from "./ActivityFeed";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useEditorStore } from "../store";
 import { type BottomTab, useUiStore } from "../uiStore";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 
 /**
  * Bottom panel: Issues (linter output) and Activity (the op transcript).
@@ -21,18 +22,12 @@ export function BottomPanel() {
   ];
 
   return (
-    <div className="flex h-full flex-col bg-card">
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 pt-1">
+    <Tabs value={bottomTab} onValueChange={(value) => { if (value === "issues" || value === "activity") setBottomTab(value); }} className="h-full bg-card">
+      <TabsList variant="line" aria-label="Review views">
         {tabs.map((tab) => (
-          <button
+          <TabsTrigger
             key={tab.id}
-            onClick={() => setBottomTab(tab.id)}
-            aria-pressed={bottomTab === tab.id}
-            className={`rounded-t-md border-b-2 px-3 py-1.5 text-[12px] ${
-              bottomTab === tab.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
+            value={tab.id}
           >
             {tab.label}
             {tab.badge !== undefined && tab.badge > 0 && (
@@ -40,12 +35,12 @@ export function BottomPanel() {
                 {tab.badge}
               </span>
             )}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      </TabsList>
+      <TabsContent value={bottomTab} className="flex-1 overflow-y-auto p-2.5">
         {bottomTab === "issues" ? <DiagnosticsPanel /> : <ActivityFeed />}
-      </div>
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }

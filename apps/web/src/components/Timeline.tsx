@@ -1,25 +1,33 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { authorsByClip, lint, timelineDuration } from "@cutroom/engine";
 import { diffToVisuals, type ClipVisual } from "../lib/diffView";
+import {
+  conflictsToVisuals,
+  type ConflictBand,
+  type ConflictGhost,
+} from "../lib/mergeView";
 import { uploadFiles } from "../lib/upload";
 import { createTimeScale } from "../lib/timeScale";
 import { formatRulerTime } from "../lib/timecode";
 import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
 import { useEditorStore, usePlayhead, useSelection, useTrackIds } from "../store";
 import { useVcsStore } from "../vcsStore";
+import { useUiStore } from "../uiStore";
 import { Track } from "./Track";
 import { Button } from "./ui/button";
-import { Scissors, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Volume2, VolumeX, MessageSquare, Scissors, Trash2, ZoomIn, ZoomOut, Crop, Plus } from "lucide-react";
 
 /** Trailing space so the last clip never sits flush against the edge. */
 const TAIL_MS = 5_000;
-const TRACK_HEADER_WIDTH = 56;
+const TRACK_HEADER_WIDTH = 154;
 const RULER_HEIGHT = 22;
 
 // Stable empty references: passing fresh `{}` / `[]` per render would defeat
 // Track's memo on every playhead tick when no diff is active.
 const EMPTY_MAP: ReadonlyMap<string, ClipVisual> = new Map();
 const EMPTY_LIST: readonly ClipVisual[] = [];
+const EMPTY_BANDS: readonly ConflictBand[] = [];
+const EMPTY_GHOSTS: readonly ConflictGhost[] = [];
 
 /**
  * The timeline editor: toolbar, ruler, track headers, lanes, playhead.
@@ -36,6 +44,11 @@ export function Timeline() {
   const pxPerSecond = useEditorStore((state) => state.pxPerSecond);
   const setZoom = useEditorStore((state) => state.setZoom);
   const selection = useSelection();
+  const lockedTracks = useUiStore((state) => state.lockedTrackIds);
+  const hiddenTracks = useUiStore((state) => state.hiddenTrackIds);
+  const mutedTracks = useUiStore((state) => state.mutedTrackIds);
+  const setInspectorTab = useUiStore((state) => state.setInspectorTab);
+  const selectedLocked = selection !== null && lockedTracks.includes(timeline.clips[selection]?.trackId ?? "");
 
   const scale = useMemo(() => createTimeScale(pxPerSecond), [pxPerSecond]);
   const laneWidth = useMemo(
@@ -66,6 +79,16 @@ export function Timeline() {
   const diffVisuals = useMemo(
     () => (diffOverlay === null ? null : diffToVisuals(diffOverlay.diff)),
     [diffOverlay],
+  );
+
+  // Pending merge: bands over each clash and ghosts for the merge's
+  // own candidates. Null when no conflicted merge is in flight.
+  const pending = useVcsStore((state) => state.pending);
+  const resolveConflict = useVcsStore((state) => state.setResult);
+  const openTab = useUiStore((state) => state.openTab);
+  const conflictVisuals = useMemo(
+    () => (pending === null ? null : conflictsToVisuals(pending.result, timeline)),
+    [pending, timeline],
   );
 
   const assetDurations = useMemo(() => {
@@ -119,7 +142,7 @@ export function Timeline() {
 
   return (
     <div
-      className="flex flex-col rounded-md border border-border bg-card"
+      className="studio-timeline flex flex-col"
       onDragOver={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -134,6 +157,7 @@ export function Timeline() {
     >
       {/* Toolbar */}
       <div className="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
+        <span className="sequence-label">Sequence 01</span>
         <Button
           size="sm"
           variant="ghost"
@@ -143,16 +167,24 @@ export function Timeline() {
         >
           <Scissors /> Split
         </Button>
+        <Button size="sm" variant="ghost" disabled={selection === null || selectedLocked} onClick={() => {
+          setInspectorTab("clip");
+          requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="In point seconds"]')?.focus());
+        }}><Crop /> Trim</Button>
         <Button
           size="sm"
           variant="ghost"
           onClick={deleteSelected}
-          disabled={selection === null}
+          disabled={selection === null || selectedLocked}
           title="Delete selected (Del)"
         >
           <Trash2 /> Delete
         </Button>
         <span className="flex-1" />
+        <Button size="sm" variant="ghost" title="Add video track" onClick={() => {
+          const number = Math.max(0, ...timeline.tracks.filter((track) => track.kind === "video").map((track) => Number(track.id.slice(1)))) + 1;
+          useEditorStore.getState().dispatch({ type: "addTrack", track: { id: `v${number}`, name: `Video ${number}`, kind: "video", muted: false } });
+        }}><Plus /> Track</Button>
         <Button
           size="icon"
           variant="ghost"
@@ -162,7 +194,7 @@ export function Timeline() {
         >
           <ZoomOut />
         </Button>
-        <span className="font-mono text-[11px] text-muted">{pxPerSecond}px/s</span>
+        <input className="timeline-zoom" type="range" aria-label="Timeline zoom" min="5" max="400" step="1" value={pxPerSecond} onChange={(event) => setZoom(Number(event.target.value))} />
         <Button
           size="icon"
           variant="ghost"
@@ -172,7 +204,31 @@ export function Timeline() {
         >
           <ZoomIn />
         </Button>
+        <Button size="sm" variant="ghost" onClick={() => {
+          const width = laneRef.current?.parentElement?.parentElement?.clientWidth ?? 800;
+          setZoom((width - 30) / Math.max(1, timelineDuration(timeline) / 1000));
+        }}>Fit timeline</Button>
       </div>
+
+      {/* Pending merge banner: skipped entirely while the merge is clean. */}
+      {pending !== null && !pending.result.clean && (
+        <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] text-muted">
+          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
+          <span>
+            Merging{" "}
+            <strong className="text-foreground">{pending.sourceBranch}</strong> —{" "}
+            {pending.result.conflicts.length} conflict(s) left, resolve on the timeline
+          </span>
+          <button
+            type="button"
+            onClick={() => openTab("merge")}
+            title="Open the merge conflict list"
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted hover:border-primary hover:text-foreground"
+          >
+            <MessageSquare size={12} /> Open merge view
+          </button>
+        </div>
+      )}
 
       <div className="flex min-h-0">
         {/* Track headers */}
@@ -185,9 +241,13 @@ export function Timeline() {
             <div
               key={trackId}
               className="flex items-center border-b border-border px-2 font-mono text-[11px] text-muted"
-              style={{ height: 44 }}
+              style={{ height: "var(--timeline-track-height, 64px)" }}
             >
-              {trackId}
+              <div className="track-header-content"><span className="track-name">{timeline.tracks.find((track) => track.id === trackId)?.name ?? trackId.toUpperCase()}</span><div className="track-controls">
+                <button type="button" aria-label={`Hide track ${trackId}`} aria-pressed={hiddenTracks.includes(trackId)} onClick={() => useUiStore.getState().toggleTrackHidden(trackId)}>{hiddenTracks.includes(trackId) ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                <button type="button" aria-label={`Mute track ${trackId}`} aria-pressed={mutedTracks.includes(trackId)} onClick={() => useUiStore.getState().toggleTrackMuted(trackId)}>{mutedTracks.includes(trackId) ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>
+                <button type="button" aria-label={`Lock track ${trackId}`} aria-pressed={lockedTracks.includes(trackId)} onClick={() => useUiStore.getState().toggleTrackLocked(trackId)}>{lockedTracks.includes(trackId) ? <Lock size={13} /> : <Unlock size={13} />}</button>
+              </div></div>
             </div>
           ))}
         </div>
@@ -203,7 +263,7 @@ export function Timeline() {
               {rulerTicks.map((ms) => (
                 <div
                   key={ms}
-                  className="absolute top-0 h-full border-l border-[#343a40] pl-1 font-mono text-[10px] leading-[22px] text-muted"
+                  className="absolute top-0 h-full border-l border-border pl-1 font-mono text-[10px] leading-[22px] text-muted"
                   style={{ left: scale.timeToPx(ms) }}
                 >
                   {formatRulerTime(ms)}
@@ -247,6 +307,14 @@ export function Timeline() {
                 authors={authors}
                 diffById={diffVisuals?.byId ?? EMPTY_MAP}
                 ghosts={diffVisuals?.ghostsByTrack.get(trackId) ?? EMPTY_LIST}
+                conflictBands={
+                  conflictVisuals?.bandsByTrack.get(trackId) ?? EMPTY_BANDS
+                }
+                conflictGhosts={
+                  conflictVisuals?.ghostsByTrack.get(trackId) ?? EMPTY_GHOSTS
+                }
+                mergeResult={pending === null ? null : pending.result}
+                resolveConflict={resolveConflict}
               />
             ))}
 
@@ -278,7 +346,7 @@ export function Timeline() {
                 bottom: 0,
                 left: scale.timeToPx(playheadMs),
                 width: 2,
-                background: "#d97757",
+                background: "var(--color-primary)",
                 cursor: "ew-resize",
                 touchAction: "none",
                 zIndex: 20,
@@ -293,7 +361,7 @@ export function Timeline() {
                   width: 12,
                   height: 12,
                   borderRadius: "0 0 3px 3px",
-                  background: "#d97757",
+                  background: "var(--color-primary)",
                   clipPath: "polygon(0 0, 100% 0, 50% 100%)",
                 }}
               />

@@ -4,12 +4,12 @@ import type { Commit, Repo } from "./vcs";
  * Commit graph layout.
  *
  * Turns the commit DAG into rows and lanes the way `git log --graph` draws
- * it: the line you are on stays in the leftmost lane, side branches fork
+ * it: main stays in the leftmost lane, side branches fork
  * off to the right, and a merge is where two lanes meet. The point of
  * drawing it is that someone who has never used git can still see "these
  * two lines of work came together here".
  *
- * Lane assignment is branch-based, not draw-order-based: the current
+ * Lane assignment is branch-based, not draw-order-based: the main
  * branch's first-parent chain owns lane 0, and every other branch gets the
  * next lane to the right. Assigning lanes in draw order instead puts a
  * freshly-created branch in the leftmost lane and pushes the main line
@@ -99,21 +99,22 @@ export function buildCommitGraph(repo: Repo): CommitGraph {
     return { chain, forkPoint };
   };
 
-  // Lane 0 belongs to the branch you are on: its own line stays leftmost.
-  const currentHead = repo.branches[repo.currentBranch];
+  // A checkout changes HEAD, not the geometry of the history.
+  const primaryBranch = repo.branches.main !== undefined ? "main" : Object.keys(repo.branches).sort()[0] ?? repo.currentBranch;
+  const currentHead = repo.branches[primaryBranch];
   /** Chain and fork point per branch, captured while lanes are assigned. */
   const chainByBranch = new Map<string, { chain: string[]; forkPoint: string | undefined }>();
   if (currentHead !== undefined) {
     const { chain, forkPoint } = chainOf(currentHead);
     for (const id of chain) laneOf.set(id, 0);
-    branchLane[repo.currentBranch] = 0;
-    chainByBranch.set(repo.currentBranch, { chain, forkPoint });
+    branchLane[primaryBranch] = 0;
+    chainByBranch.set(primaryBranch, { chain, forkPoint });
   }
 
   // Every other branch forks to the right, in a stable order.
   let nextLane = 1;
   const otherBranches = Object.entries(repo.branches)
-    .filter(([branch]) => branch !== repo.currentBranch)
+    .filter(([branch]) => branch !== primaryBranch)
     .sort(([a], [b]) => (a < b ? -1 : 1));
   for (const [branch, headId] of otherBranches) {
     const { chain, forkPoint } = chainOf(headId);
@@ -128,37 +129,20 @@ export function buildCommitGraph(repo: Repo): CommitGraph {
     chainByBranch.set(branch, { chain, forkPoint });
   }
 
-  // Any commit not covered above (a commit whose branch was deleted, or one
-  // that a merge skipped) still needs a lane. It continues the line of its
-  // child if it has one, otherwise its parent's line — scattering it into a
-  // fresh lane would break a line in two for no reason.
-  const childrenOf = new Map<string, string[]>();
-  for (const commit of ordered) {
-    for (const parent of commit.parents) {
-      const list = childrenOf.get(parent) ?? [];
-      list.push(commit.id);
-      childrenOf.set(parent, list);
-    }
-  }
+  // Retain merged history even when its branch pointer has been deleted.
+  // A merge's second-parent chain must not collapse into its first-parent lane.
   for (const commit of ordered) {
     if (laneOf.has(commit.id)) continue;
-    const child = childrenOf.get(commit.id)?.find((id) => laneOf.has(id));
-    const parent = commit.parents.find((id) => laneOf.has(id));
-    const inherited =
-      child !== undefined
-        ? laneOf.get(child)
-        : parent !== undefined
-          ? laneOf.get(parent)
-          : undefined;
-    const lane = inherited ?? nextLane++;
-    laneOf.set(commit.id, lane);
+    const { chain } = chainOf(commit.id);
+    const lane = nextLane++;
+    for (const id of chain) laneOf.set(id, lane);
   }
 
   // Edges. The tail edge of each side branch is tagged so it can be drawn
   // in that branch's colour — that is what makes a fork look like a fork.
   const branchOfEdge = new Map<string, string>();
-  for (const [branch, headId] of Object.entries(repo.branches)) {
-    if (branch === repo.currentBranch) continue;
+  for (const branch of Object.keys(repo.branches)) {
+    if (branch === primaryBranch) continue;
     const { chain, forkPoint } = chainByBranch.get(branch) ?? { chain: [], forkPoint: undefined };
     const tail = chain[chain.length - 1];
     if (tail === undefined || forkPoint === undefined) continue;

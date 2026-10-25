@@ -1,14 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import { uploadFiles } from "../lib/upload";
 import { usePersistenceStore } from "../lib/persistence/persistenceStore";
-import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
 
 /**
  * File-picker half of uploads. The pipeline lives in lib/upload so the
  * drop zone behaves identically; this component is just the button.
  */
-export function UploadButton({ icon, label = "Add video" }: { icon?: ReactNode; label?: string }) {
+export function UploadButton({ icon, label = "Add video", accept = "video/*,audio/*,image/*" }: { icon?: ReactNode; label?: string; accept?: string }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -36,7 +35,7 @@ export function UploadButton({ icon, label = "Add video" }: { icon?: ReactNode; 
       <input
         ref={inputRef}
         type="file"
-        accept="video/*"
+        accept={accept}
         multiple
         className="hidden"
         onChange={(event) => {

@@ -86,6 +86,7 @@ export function DiffPanel() {
           Clear
         </Button>
       </header>
+      {(diffOverlay.diff.metadataChanges?.length ?? 0) > 0 && <p className="vcs-summary">Project changes: {diffOverlay.diff.metadataChanges?.join(", ")}</p>}
       {delta !== null && (
         <div
           className="mb-3 text-[12px]"

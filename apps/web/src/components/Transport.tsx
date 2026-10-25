@@ -1,20 +1,9 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { type Clip, clipsOnTrack, timelineDuration } from "@cutroom/engine";
+import { timelineDuration } from "@cutroom/engine";
 import { formatTimecode, nextCut, previousCut } from "../lib/timecode";
 import { useEditorStore, usePlayhead } from "../store";
 import { Button } from "./ui/button";
 
-function firstVideoTrackId(timeline: {
-  tracks: readonly { id: string; kind: string }[];
-}): string {
-  return timeline.tracks.find((track) => track.kind === "video")?.id ?? "v1";
-}
-
-/**
- * Transport: play/pause and jump between cuts, with a timecode readout.
- * Cut navigation works on the video track's clip starts — real edits, not
- * decoration: pressing next lands exactly on the next cut.
- */
 export function Transport() {
   const timeline = useEditorStore((state) => state.timeline);
   const isPlaying = useEditorStore((state) => state.isPlaying);
@@ -23,30 +12,17 @@ export function Transport() {
   const play = useEditorStore((state) => state.play);
   const pause = useEditorStore((state) => state.pause);
 
-  const clips: readonly Clip[] = clipsOnTrack(timeline, firstVideoTrackId(timeline));
-  const cuts = clips.map((clip) => ({ start: clip.start }));
+  const cuts = Object.values(timeline.clips).map((clip) => ({ start: clip.start }));
   const prev = previousCut(cuts, playheadMs);
   const next = nextCut(cuts, playheadMs);
 
-  /**
-   * Play from the playhead. Pressing play past the end of the timeline
-   * restarts from zero — the same behaviour the player had when it owned
-   * the button.
-   */
   const togglePlayback = () => {
     if (isPlaying) {
       pause();
       return;
     }
-    let at = playheadMs;
-    const underPlayhead = clips.some(
-      (clip) => at >= clip.start && at < clip.start + clip.duration,
-    );
-    if (!underPlayhead) {
-      if (at < timelineDuration(timeline)) return; // in a gap: stay put
-      at = 0;
-      setPlayhead(0);
-    }
+    if (timelineDuration(timeline) === 0) return;
+    if (playheadMs >= timelineDuration(timeline)) setPlayhead(0);
     play();
   };
 
@@ -85,7 +61,7 @@ export function Transport() {
         className="ml-2 font-mono text-sm tabular-nums text-foreground"
         aria-label="timecode"
       >
-        {formatTimecode(playheadMs)}
+        {formatTimecode(playheadMs, { fps: timeline.fps ?? 30 })}
       </span>
     </div>
   );

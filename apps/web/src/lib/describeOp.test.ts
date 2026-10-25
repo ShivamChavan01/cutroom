@@ -27,4 +27,10 @@ describe("describeOp", () => {
       describeOp({ type: "setVolume", clipId: "a", volume: 0.5 }),
     ).toBe("set a volume to 0.5");
   });
+  it("narrates visual edits, tracks and project settings", () => {
+    expect(describeOp({type:"setTransform",clipId:"a",x:20})).toBe("transformed a");
+    expect(describeOp({type:"addTrack",track:{id:"v2",name:"Video 2",kind:"video",muted:false}})).toBe("added track Video 2");
+    expect(describeOp({type:"setFrameRate",fps:24})).toBe("set timeline to 24 fps");
+    expect(describeOp({type:"renameProject",name:"North"})).toBe("renamed project to North");
+  });
 });

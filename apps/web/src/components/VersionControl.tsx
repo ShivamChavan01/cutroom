@@ -8,7 +8,6 @@ import {
   type Repo,
   branchHistory,
   currentCommit,
-  head,
 } from "../lib/vcs";
 import { authorColor } from "../lib/identity";
 import { useEditorStore } from "../store";
@@ -52,27 +51,40 @@ function DiffCompare({
   };
 
   return (
-    <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
-      <span style={{ color: "#868e96" }}>Diff</span>
-      <select value={diffBase} onChange={(event) => onBase(event.target.value)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <span style={{ color: "#868e96" }}>→</span>
-      <select value={diffTarget} onChange={(event) => onTarget(event.target.value)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+    <div className="vcs-section vcs-compare">
+      <h3 className="vcs-label">Compare versions</h3>
+      <label className="vcs-field">
+        <span className="vcs-label">From</span>
+        <select
+          aria-label="Compare from"
+          value={diffBase}
+          onChange={(event) => onBase(event.target.value)}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="vcs-field">
+        <span className="vcs-label">To</span>
+        <select
+          aria-label="Compare to"
+          value={diffTarget}
+          onChange={(event) => onTarget(event.target.value)}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <Button size="sm" onClick={compare}>Compare</Button>
       {diffOverlay !== null && (
         <>
-          <span style={{ color: "#868e96" }}>
+          <span className="vcs-summary">
             {diffOverlay.baseLabel} → {diffOverlay.targetLabel}:{" "}
             {diffOverlay.diff.added} added, {diffOverlay.diff.removed} removed,{" "}
             {diffOverlay.diff.changed} changed
@@ -121,8 +133,6 @@ function diffTargets(
 
 export function VersionControl() {
   const repo = useVcsStore((state) => state.repo);
-  const pending = useVcsStore((state) => state.pending);
-  const diffOverlay = useVcsStore((state) => state.diffOverlay);
   const openTab = useUiStore((state) => state.openTab);
   const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
@@ -146,7 +156,8 @@ export function VersionControl() {
     try {
       // Compare against whatever is checked out: the branch tip normally,
       // the viewed commit while detached.
-      return diffTimelines(currentCommit(repo).timeline, timeline).changes.length;
+      const changes = diffTimelines(currentCommit(repo).timeline, timeline);
+      return changes.changes.length + (changes.metadataChanges?.length ?? 0);
     } catch {
       return 0;
     }
@@ -188,17 +199,11 @@ export function VersionControl() {
   };
 
   return (
-    <section
-      aria-label="version control"
-      style={{
-        border: "1px solid #2c2e33", borderRadius: 6, background: "#101114",
-        padding: "8px 12px", marginTop: 12, fontSize: 12,
-      }}
-    >
-      <header style={{ color: "#868e96", marginBottom: 6 }}>
-        Version control —{" "}
+    <section aria-label="version control" className="vcs-panel">
+      <header className="vcs-section">
+        <h3 className="vcs-label">Current branch</h3>
         {repo.detachedAt !== null ? (
-          <span style={{ color: "#d97757" }}>
+          <div className="vcs-detached">
             detached at {repo.detachedAt}{" "}
             <Button
               size="sm"
@@ -207,9 +212,10 @@ export function VersionControl() {
             >
               back to {repo.currentBranch}
             </Button>
-          </span>
+          </div>
         ) : (
           <select
+            aria-label="Current branch"
             value={repo.currentBranch}
             onChange={(event) => checkoutGuarded(event.target.value)}
           >
@@ -219,57 +225,64 @@ export function VersionControl() {
               </option>
             ))}
           </select>
-        )}{" "}
+        )}
         {dirty > 0 && (
-          <span style={{ color: "#ffd43b" }}>
-            ({dirty} uncommitted change{dirty === 1 ? "" : "s"})
+          <span className="vcs-summary text-warn">
+            {dirty} uncommitted change{dirty === 1 ? "" : "s"}
           </span>
         )}
-        <Input
-          placeholder="new branch"
-          value={branchName}
-          onChange={(event) => setBranchName(event.target.value)}
-          style={{ marginLeft: 8, width: 110 }}
-        />
-        <Button size="sm"
-          onClick={() => {
-            try {
-              store.createBranch(branchName.trim());
-              setBranchName("");
-            } catch (error) {
-              alert(error instanceof Error ? error.message : "invalid branch");
-            }
-          }}
-        >
-          Branch
-        </Button>
+        <div className="vcs-row">
+          <Input
+            aria-label="New branch name"
+            placeholder="new branch"
+            value={branchName}
+            onChange={(event) => setBranchName(event.target.value)}
+          />
+          <Button
+            size="sm"
+            onClick={() => {
+              try {
+                store.createBranch(branchName.trim());
+                setBranchName("");
+              } catch (error) {
+                alert(error instanceof Error ? error.message : "invalid branch");
+              }
+            }}
+          >
+            Branch
+          </Button>
+        </div>
       </header>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <Input
-          placeholder="commit message"
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          style={{ flex: 1 }}
-        />
-        <Button size="sm"
-          disabled={dirty === 0 || message.trim().length === 0 || repo.detachedAt !== null}
-          title={
-            repo.detachedAt !== null
-              ? "Detached HEAD — check out a branch to commit"
-              : undefined
-          }
-          onClick={() => {
-            store.commitCurrent(message.trim());
-            setMessage("");
-          }}
-        >
-          Commit
-        </Button>
+      <div className="vcs-section">
+        <h3 className="vcs-label">Save a version</h3>
+        <div className="vcs-row">
+          <Input
+            aria-label="Commit message"
+            placeholder="commit message"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+          />
+          <Button
+            size="sm"
+            disabled={dirty === 0 || message.trim().length === 0 || repo.detachedAt !== null}
+            title={
+              repo.detachedAt !== null
+                ? "Detached HEAD — check out a branch to commit"
+                : undefined
+            }
+            onClick={() => {
+              store.commitCurrent(message.trim());
+              setMessage("");
+            }}
+          >
+            Commit
+          </Button>
+        </div>
       </div>
       {lintDeltaAgainstParent !== null && (
         <div
-          className="mb-2 text-[11px]"
+          className="vcs-summary"
           title="Linter findings introduced or resolved by the uncommitted changes, against the commit they would sit on"
         >
           {lintDeltaAgainstParent.introduced.length === 0 &&
@@ -296,53 +309,42 @@ export function VersionControl() {
         </div>
       )}
 
-      <ul style={{ listStyle: "none", margin: "0 0 8px", padding: 0 }}>
-        {history.map((commit) => {
-          const viewing = repo.detachedAt === commit.id;
-          return (
-            <li key={commit.id} style={{ marginBottom: 3 }}>
-              <button
-                onClick={() => store.viewCommit(commit.id)}
-                title={`Check out ${commit.id} and view its timeline`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  width: "100%",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  background: viewing ? "#23262c" : "transparent",
-                  border: viewing ? "1px solid #2c2e33" : "1px solid transparent",
-                  borderRadius: 4,
-                  padding: "2px 6px",
-                  fontSize: 12,
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-block", width: 8, height: 8,
-                    borderRadius: "50%",
-                    background: authorColor(commit.author),
-                  }}
-                />
-                <code>{commit.id}</code>
-                <span style={{ color: "#e9ecef" }}>{commit.message}</span>
-                <span style={{ color: "#868e96" }}>
-                  — {commit.author}
-                  {commit.parents.length > 1
-                    ? ` (merge of ${commit.parents.join(" + ")})`
-                    : ""}
-                </span>
-                {viewing && (
-                  <span style={{ marginLeft: "auto", color: "#d97757" }}>
-                    viewing
+      <div className="vcs-section">
+        <h3 className="vcs-label">History</h3>
+        <ul className="vcs-history">
+          {history.map((commit) => {
+            const viewing = repo.detachedAt === commit.id;
+            return (
+              <li key={commit.id}>
+                <button
+                  onClick={() => store.viewCommit(commit.id)}
+                  title={`Check out ${commit.id} and view its timeline`}
+                  className={`vcs-commit${viewing ? " vcs-commit-viewing" : ""}`}
+                >
+                  <span
+                    className="vcs-author-dot"
+                    style={{ background: authorColor(commit.author) }}
+                  />
+                  <span className="vcs-commit-copy">
+                    <span className="vcs-commit-title" title={commit.message}>{commit.message}</span>
+                    <span className="vcs-commit-meta">
+                      <code>{commit.id}</code> · {commit.author}
+                      {commit.parents.length > 1
+                        ? ` (merge of ${commit.parents.join(" + ")})`
+                        : ""}
+                    </span>
                   </span>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                  {viewing && (
+                    <span className="vcs-viewing-label">
+                      viewing
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
 
       <DiffCompare
         repo={repo}
@@ -353,42 +355,38 @@ export function VersionControl() {
         onTarget={setDiffTarget}
       />
 
-      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-        <select
-          value={mergeSource}
-          onChange={(event) => setMergeSource(event.target.value)}
-          style={{
-            background: "#16181d",
-            color: "#e9ecef",
-            border: "1px solid #2c2e33",
-            borderRadius: 6,
-            padding: "4px 6px",
-            fontSize: 12,
-          }}
-        >
-          <option value="">merge from…</option>
-          {branches
-            .filter((name) => name !== repo.currentBranch)
-            .map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-        </select>
-        <Button
-          size="sm"
-          disabled={mergeSource === ""}
-          onClick={() => {
-            try {
-              store.beginMerge(mergeSource);
-              openTab("merge");
-            } catch (error) {
-              alert(error instanceof Error ? error.message : "merge failed");
-            }
-          }}
-        >
-          Merge
-        </Button>
+      <div className="vcs-section">
+        <h3 className="vcs-label">Merge branch</h3>
+        <div className="vcs-row">
+          <select
+            aria-label="Merge source"
+            value={mergeSource}
+            onChange={(event) => setMergeSource(event.target.value)}
+          >
+            <option value="">merge from…</option>
+            {branches
+              .filter((name) => name !== repo.currentBranch)
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </select>
+          <Button
+            size="sm"
+            disabled={mergeSource === ""}
+            onClick={() => {
+              try {
+                store.beginMerge(mergeSource);
+                openTab("merge");
+              } catch (error) {
+                alert(error instanceof Error ? error.message : "merge failed");
+              }
+            }}
+          >
+            Merge
+          </Button>
+        </div>
       </div>
     </section>
   );

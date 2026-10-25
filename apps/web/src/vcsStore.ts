@@ -40,6 +40,7 @@ interface VcsStore {
   readonly ensureRepo: () => void;
   readonly commitCurrent: (message: string) => void;
   readonly createBranch: (name: string) => void;
+  readonly forkBranch: (name: string) => void;
   readonly checkoutBranch: (name: string) => void;
   /** Check out a specific commit (detached HEAD) and show its timeline. */
   readonly viewCommit: (commitId: string) => void;
@@ -87,6 +88,12 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     const { repo } = get();
     if (repo === null) return;
     set({ repo: createBranch(repo, name) });
+  },
+
+  forkBranch: (name) => {
+    const { repo } = get();
+    if (repo === null) return;
+    set({ repo: checkout(createBranch(repo, name), name), pending: null, diffOverlay: null });
   },
 
   checkoutBranch: (name) => {

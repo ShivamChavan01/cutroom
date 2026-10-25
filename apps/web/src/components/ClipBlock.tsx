@@ -10,6 +10,9 @@ import type { TimeScale } from "../lib/timeScale";
 import { authorColor } from "../lib/identity";
 import type { DiffTint } from "../lib/diffView";
 import { useEditorStore } from "../store";
+import { useMediaPosters } from "../lib/media/poster";
+import { useAssetUrls } from "../lib/assets";
+import { useUiStore } from "../uiStore";
 
 export const DIFF_BORDER: Record<DiffTint, string> = {
   added: "#51cf66",
@@ -32,6 +35,8 @@ interface ClipBlockProps {
   readonly diffTint?: DiffTint;
   readonly diffBadge?: string;
   readonly ghost?: boolean;
+  /** Conflict ghosts: crimson + ⚠, shown instead of the removed-ghost style. */
+  readonly ghostVariant?: "conflict";
 }
 
 /**
@@ -48,8 +53,16 @@ export const ClipBlock = memo(function ClipBlock({
   diffTint,
   diffBadge,
   ghost = false,
+  ghostVariant,
 }: ClipBlockProps) {
   const selected = useEditorStore((state) => state.selectedClipId === clip.id);
+  const poster = useMediaPosters((posters) => posters.get(clip.assetId));
+  const asset = useEditorStore((state) => state.timeline.assets[clip.assetId]);
+  const imageUrl = useAssetUrls((urls) => asset?.kind === "image" ? urls.get(clip.assetId) : undefined);
+  const locked = useUiStore((state) => state.lockedTrackIds.includes(clip.trackId));
+  const [moveDelta, setMoveDelta] = useState(0);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const moveRef = useRef<{ x: number; y: number; delta: number; moved: boolean } | null>(null);
   const selectClip = useEditorStore((state) => state.selectClip);
   const dispatch = useEditorStore((state) => state.dispatch);
   const [dragDxMs, setDragDxMs] = useState<number | null>(null);
@@ -76,6 +89,7 @@ export const ClipBlock = memo(function ClipBlock({
   };
 
   const beginDrag = (side: "left" | "right", clientX: number) => {
+    if (locked) return;
     dragSideRef.current = side;
     dragStartXRef.current = clientX;
     setDragDxMs(0);
@@ -134,6 +148,7 @@ export const ClipBlock = memo(function ClipBlock({
     style: handleStyle(side),
     onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
       event.stopPropagation();
+      if (locked) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       beginDrag(side, event.clientX);
     },
@@ -154,11 +169,17 @@ export const ClipBlock = memo(function ClipBlock({
 
   if (ghost) {
     // Removed clips render at their old position, dashed and inert: no
-    // selection, no trim handles, no pointer interaction.
+    // selection, no trim handles, no pointer interaction. Conflict ghosts
+    // share that layout but brand themselves as merge candidates.
+    const conflict = ghostVariant === "conflict";
     return (
       <div
-        aria-label={`removed clip ${clip.id}`}
-        title={titleLines.join("\n") || clip.id}
+        aria-label={conflict ? `merge candidate ${clip.id}` : `removed clip ${clip.id}`}
+        title={
+          conflict
+            ? `merge candidate\n${titleLines.join("\n") || clip.id}`
+            : titleLines.join("\n") || clip.id
+        }
         style={{
           position: "absolute",
           left: scale.timeToPx(clip.start),
@@ -166,7 +187,7 @@ export const ClipBlock = memo(function ClipBlock({
           top: 4,
           bottom: 4,
           background: "transparent",
-          border: `2px dashed ${DIFF_BORDER.removed}`,
+          border: `2px dashed ${conflict ? "#ff8787" : DIFF_BORDER.removed}`,
           borderRadius: 4,
           color: "#ffa8a8",
           fontSize: 11,
@@ -178,7 +199,7 @@ export const ClipBlock = memo(function ClipBlock({
           pointerEvents: "none",
         }}
       >
-        ✕ {clip.id} {diffBadge !== undefined ? `· ${diffBadge}` : ""}
+        {conflict ? "⚠" : "✕"} {clip.id} {diffBadge !== undefined ? `· ${diffBadge}` : ""}
       </div>
     );
   }
@@ -186,9 +207,37 @@ export const ClipBlock = memo(function ClipBlock({
   return (
     <div
       role="button"
+      className="studio-clip"
       tabIndex={0}
       aria-label={`clip ${clip.id}`}
       title={titleLines.join("\n") || clip.id}
+      onPointerDown={(event) => {
+        if (locked || event.button !== 0) return;
+        moveRef.current = { x: event.clientX, y: event.clientY, delta: 0, moved: false };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        const moving = moveRef.current;
+        if (moving === null) return;
+        if (Math.abs(event.clientX - moving.x) > 3 || Math.abs(event.clientY - moving.y) > 8) moving.moved = true;
+        if (!moving.moved) return;
+        moving.delta = Math.max(-clip.start, Math.round(scale.pxToTime(event.clientX - moving.x)));
+        setMoveDelta(moving.delta);
+      }}
+      onPointerUp={(event) => {
+        const moving = moveRef.current;
+        moveRef.current = null;
+        setMoveDelta(0);
+        if (moving === null || !moving.moved) return;
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-track-id]")?.dataset.trackId;
+        const track = useEditorStore.getState().timeline.tracks.find((item) => item.id === target);
+        const compatible = track !== undefined && (asset?.kind === "audio" ? track.kind === "audio" : track.kind === "video");
+        try {
+          dispatch({ type: "moveClip", clipId: clip.id, start: clip.start + moving.delta, ...(compatible ? { trackId: track.id } : {}) });
+          setMoveError(null);
+        } catch (reason) { setMoveError(reason instanceof Error ? reason.message : "Could not move clip."); }
+      }}
+      onPointerCancel={() => { moveRef.current = null; setMoveDelta(0); }}
       onClick={(event) => {
         event.stopPropagation();
         selectClip(clip.id);
@@ -198,14 +247,14 @@ export const ClipBlock = memo(function ClipBlock({
       }}
       style={{
         position: "absolute",
-        left: scale.timeToPx(shownStart),
+        left: scale.timeToPx(shownStart + moveDelta),
         width: Math.max(2, scale.timeToPx(shownDuration)),
         top: 4,
         bottom: 4,
-        background: clip.trackId.startsWith("a") ? "#2f6f4f" : "#3b5bdb",
+        background: clip.trackId.startsWith("a") ? "#304a3e" : "#344e56",
         border:
           diffBorder ??
-          (selected ? "2px solid #ffd43b" : "1px solid rgba(255,255,255,0.25)"),
+          (selected ? "2px solid var(--color-primary)" : "1px solid #6b8e98"),
         borderBottom: hasError
           ? "3px solid #ff6b6b"
           : hasWarning
@@ -222,6 +271,10 @@ export const ClipBlock = memo(function ClipBlock({
         opacity: dragDxMs !== null ? 0.85 : 1,
       }}
     >
+      {(poster ?? imageUrl) !== undefined && !clip.trackId.startsWith("a") && (
+        <div className="clip-filmstrip" aria-hidden style={{ backgroundImage: `url("${poster ?? imageUrl}")` }} />
+      )}
+      <div className="clip-caption">
       {(hasError || hasWarning) && (
         <span style={{ marginRight: 4 }}>{hasError ? "●" : "○"}</span>
       )}
@@ -238,7 +291,9 @@ export const ClipBlock = memo(function ClipBlock({
       {diffBadge !== undefined && (
         <span style={{ marginRight: 4, opacity: 0.9 }}>{diffBadge}</span>
       )}
-      {clip.id}
+      {asset?.name ?? clip.id}
+      </div>
+      {moveError !== null && <span role="alert" className="clip-move-error">{moveError}</span>}
       <div {...handleProps("left")} />
       <div {...handleProps("right")} />
     </div>

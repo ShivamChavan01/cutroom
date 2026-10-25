@@ -96,7 +96,7 @@ describe("buildCommitGraph", () => {
     expect(new Set(rows).size).toBe(rows.length);
   });
 
-  it("keeps the current branch in lane 0 and forks side branches to the right", () => {
+  it("keeps main in lane 0 and forks side branches to the right", () => {
     // The thing a graph must show: two lines of work, visibly separate.
     let repo = baseRepo();
     repo = commit(repo, empty, "base work", "alice");
@@ -143,8 +143,8 @@ describe("buildCommitGraph", () => {
     expect(tagged[0]?.branch).toBe("feature");
   });
 
-  it("shows no fork when the other branch is simply behind the current one", () => {
-    // You are on `feature`; `main` is an ancestor. One line, honestly.
+  it("shows the feature fork even while that branch is checked out", () => {
+    // Same shape as the reported bug: main stops at the feature fork.
     let repo = baseRepo();
     repo = commit(repo, empty, "base work", "alice");
     repo = createBranch(repo, "feature");
@@ -152,8 +152,10 @@ describe("buildCommitGraph", () => {
     repo = commit(repo, empty, "feature work", "bob");
 
     const graph = buildCommitGraph(repo);
-    expect(graph.laneCount).toBe(1);
-    expect(graph.edges.filter((edge) => edge.branch !== undefined)).toEqual([]);
+    expect(graph.laneCount).toBe(2);
+    expect(graph.branchLane).toEqual({ main: 0, feature: 1 });
+    expect(buildCommitGraph(checkout(repo, "main"))).toEqual(graph);
+    expect(graph.edges).toContainEqual({ from: "c2", to: "c1", branch: "feature" });
   });
 
   it("records which lane each branch runs in", () => {
@@ -161,6 +163,32 @@ describe("buildCommitGraph", () => {
     repo = createBranch(repo, "feature");
     const graph = buildCommitGraph(repo);
     expect(graph.branchLane["main"]).toBe(0);
+  });
+
+  it("retains the merged side lane when its branch pointer was deleted", () => {
+    let repo = commit(baseRepo(), empty, "base", "alice");
+    repo = checkout(createBranch(repo, "feature"), "feature");
+    repo = commit(repo, empty, "feature work", "bob");
+    const merged: Repo = {
+      ...repo,
+      currentBranch: "main",
+      branches: { main: "c3" },
+      commits: { ...repo.commits, c3: {
+        id: "c3", message: "merge feature", author: "alice", at: Date.now(),
+        timeline: empty, parents: ["c1", "c2"],
+      } },
+    };
+    const graph = buildCommitGraph(merged);
+    const lanes = new Map(graph.nodes.map((node) => [node.commit.id, node.lane]));
+    expect(lanes.get("c3")).toBe(0);
+    expect(lanes.get("c2")).toBe(1);
+    expect(graph.edges.filter((edge) => edge.from === "c3")).toHaveLength(2);
+  });
+
+  it("uses a stable fallback when there is no main branch", () => {
+    const repo = commit(baseRepo(), empty, "work", "alice");
+    const renamed = { ...repo, branches: { trunk: "c0", feature: "c1" }, currentBranch: "trunk" };
+    expect(buildCommitGraph(renamed)).toEqual(buildCommitGraph({ ...renamed, currentBranch: "feature" }));
   });
 
   it("keeps every edge pointing at a commit that exists", () => {

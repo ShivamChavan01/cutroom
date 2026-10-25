@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { type Commit } from "../lib/vcs";
 import { buildCommitGraph } from "../lib/commitGraph";
-import { authorColor } from "../lib/identity";
 import { useVcsStore } from "../vcsStore";
 import { useEditorStore } from "../store";
 
@@ -9,20 +8,13 @@ const ROW_HEIGHT = 46;
 const LANE_WIDTH = 22;
 const NODE_RADIUS = 5;
 
-/** Stable colour per branch name, so a branch keeps its colour everywhere. */
-function branchColor(branch: string): string {
-  let hash = 0;
-  for (let i = 0; i < branch.length; i++) {
-    hash = (Math.imul(hash, 31) + branch.charCodeAt(i)) >>> 0;
-  }
-  return `hsl(${hash % 360} 65% 58%)`;
-}
+const LANE_COLORS = ["#7fa2ff", "#b194f4", "#edb271", "#6bc8ad", "#ee9cbe", "#73c5da"];
 
 /**
  * Commit graph.
  *
  * Drawn so that someone who has never used git can read it: the leftmost
- * vertical line is the line you are on, side branches fork off to the right
+ * vertical line is main, side branches fork off to the right
  * in their own colour, each dot is a saved version, and where two lines
  * meet is where two people's work came together. Clicking a dot checks
  * that version out, exactly like the commit list.
@@ -46,6 +38,10 @@ export function CommitGraph() {
   const rowY = (row: number): number => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   const nodeById = new Map(graph.nodes.map((node) => [node.commit.id, node]));
+  const laneColor = (lane: number): string => LANE_COLORS[lane % LANE_COLORS.length] ?? "#7fa2ff";
+  const branchColor = (branch: string): string => laneColor(
+    graph.branchLane[branch] ?? nodeById.get(repo.branches[branch] ?? "")?.lane ?? 0,
+  );
 
   /** Branch names shown next to the commit they point at. */
   const tipsByCommit = new Map<string, string[]>();
@@ -64,11 +60,10 @@ export function CommitGraph() {
     });
 
   return (
-    <div>
+    <div className="commit-graph" aria-label="Commit graph">
       <p className="mb-3 text-[11px] text-faint">
-        The left line is the line you are on. Branches fork off to the right
-        in their own colour. Each dot is a saved version; where two lines
-        meet, two people's work came together.
+        Main stays on the left. Branches fork to the right and join at merge
+        commits. Labels mark branch tips; branches sharing a commit share a dot.
       </p>
       <div className="relative" style={{ height }}>
         <svg
@@ -85,7 +80,9 @@ export function CommitGraph() {
             const y1 = rowY(from.row);
             const x2 = laneX(to.lane);
             const y2 = rowY(to.row);
-            const stroke = edge.branch === undefined ? "#4b525c" : branchColor(edge.branch);
+            const stroke = edge.branch === undefined
+              ? laneColor(x1 === x2 ? from.lane : Math.max(from.lane, to.lane))
+              : branchColor(edge.branch);
             if (x1 === x2) {
               return (
                 <line
@@ -117,8 +114,10 @@ export function CommitGraph() {
               cx={laneX(node.lane)}
               cy={rowY(node.row)}
               r={NODE_RADIUS}
-              fill={authorColor(node.commit.author)}
-              stroke="#0b0c0e"
+              data-commit-id={node.commit.id}
+              data-lane={node.lane}
+              fill={laneColor(node.lane)}
+              stroke="var(--color-card)"
               strokeWidth={2}
             />
           ))}
@@ -131,10 +130,12 @@ export function CommitGraph() {
               store.viewCommit(node.commit.id);
               setPlayhead(0);
             }}
-            title={`Check out ${node.commit.id} and view its timeline`}
-            className="absolute flex w-full items-center gap-2 rounded-md px-2 text-left hover:bg-[#1a1d22]"
+            title={`${node.commit.message} · ${node.commit.author} · ${time(node.commit)}. Check out ${node.commit.id} and view its timeline`}
+            aria-current={repo.detachedAt === node.commit.id || (repo.detachedAt === null && repo.branches[repo.currentBranch] === node.commit.id) ? "true" : undefined}
+            className="absolute flex min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-raised"
             style={{
               left: graphWidth,
+              right: 0,
               top: node.row * ROW_HEIGHT,
               height: ROW_HEIGHT,
             }}
@@ -145,7 +146,7 @@ export function CommitGraph() {
             >
               {node.commit.id}
             </span>
-            <span className="shrink-0 text-[12px] text-foreground">
+            <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
               {node.commit.message}
             </span>
             {tipsByCommit.get(node.commit.id)?.map((branch) => (
@@ -155,21 +156,12 @@ export function CommitGraph() {
                 style={{
                   color: branchColor(branch),
                   border: `1px solid ${branchColor(branch)}`,
+                  background: repo.currentBranch === branch && repo.detachedAt === null ? "var(--color-selection)" : undefined,
                 }}
               >
-                {branch}
+                {branch}{repo.currentBranch === branch && repo.detachedAt === null ? " · HEAD" : ""}
               </span>
             ))}
-            <span className="flex-1" />
-            <span
-              className="shrink-0 text-[11px]"
-              style={{ color: authorColor(node.commit.author) }}
-            >
-              {node.commit.author}
-            </span>
-            <span className="shrink-0 text-[11px] text-faint">
-              {time(node.commit)}
-            </span>
           </button>
         ))}
       </div>

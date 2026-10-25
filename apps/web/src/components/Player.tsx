@@ -1,51 +1,17 @@
-import { type Clip, clipsOnTrack, timelineDuration } from "@cutroom/engine";
-import { useEffect, useRef, useState } from "react";
-import { nextClip, resolveActiveClip } from "../lib/playback";
-import { resolveAssetUrl } from "../lib/assets";
-import {
-  decideSwap,
-  decideWarm,
-  isSameSource,
-  otherSide,
-  warmMatches,
-  type Side,
-} from "../lib/swap";
-import { Pause, Play } from "lucide-react";
+import { type Track, clipsOnTrack, timelineDuration } from "@cutroom/engine";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { advancePlayback, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "../lib/playback";
+import { resolveAssetUrl, useAssetUrls } from "../lib/assets";
+import { decideSwap, isSameSource, otherSide, type Side } from "../lib/swap";
 import { useEditorStore } from "../store";
-import { Button } from "./ui/button";
-
-/**
- * Double-buffered player.
- *
- * Two <video> elements, one visible. The hidden element is warmed for the
- * next clip: src set ~1s before the boundary, seek to inPoint on
- * loadedmetadata, and only treated as ready after `seeked` with
- * `readyState >= HAVE_ENOUGH_DATA` (4). At the boundary the roles flip and
- * the warm element plays — the previously-live element is paused, never
- * re-sourced mid-playback.
- *
- * Stall metric: boundary tick to the new element's first `playing` event,
- * logged as `(preload on)` or `(preload off)`. `?preload=off` disables
- * warming entirely so both modes measure the same interval.
- */
+import { useUiStore } from "../uiStore";
 
 const DRIFT_TOLERANCE_MS = 250;
 const PRELOAD_AHEAD_MS = 1_000;
-const READY_STATE_ENOUGH = 4;
-const SEEK_MATCH_TOLERANCE_MS = 120;
-
-
-
-function firstVideoTrackId(timeline: {
-  tracks: readonly { id: string; kind: string }[];
-}): string {
-  return timeline.tracks.find((track) => track.kind === "video")?.id ?? "v1";
-}
 
 interface WarmState {
   readonly side: Side;
   readonly assetId: string;
-  readonly clip: Clip;
 }
 
 declare global {
@@ -54,305 +20,240 @@ declare global {
   }
 }
 
-function recordStall(mode: string, ms: number): void {
-  window.__stalls = [...(window.__stalls ?? []), { mode, ms }];
-  console.info(`[player] boundary swap stall (${mode}): ${ms.toFixed(0)}ms`);
-}
-
-export function Player() {
-  const videoARef = useRef<HTMLVideoElement | null>(null);
-  const videoBRef = useRef<HTMLVideoElement | null>(null);
-  // liveSide is state (owns visibility) with a ref mirror for callbacks.
-  const [liveSide, setLiveSideState] = useState<Side>("a");
-  const liveSideRef = useRef<Side>("a");
-  const loadedRef = useRef<Record<Side, string | null>>({ a: null, b: null });
-  const warmRef = useRef<WarmState | null>(null);
-  const swapStartedAtRef = useRef(0);
-
-  const preloadEnabled =
-    new URLSearchParams(window.location.search).get("preload") !== "off";
-
+function TrackPlayer({ track, order, muted, onError, onReady }: {
+  readonly track: Track;
+  readonly order: number;
+  readonly muted: boolean;
+  readonly onError: (message: string) => void;
+  readonly onReady: () => void;
+}) {
   const timeline = useEditorStore((state) => state.timeline);
-  const playheadMs = useEditorStore((state) => state.playheadMs);
-  const isPlaying = useEditorStore((state) => state.isPlaying);
+  const at = useEditorStore((state) => state.playheadMs);
+  const playing = useEditorStore((state) => state.isPlaying);
+  const clips = useMemo(() => clipsOnTrack(timeline, track.id), [timeline, track.id]);
+  const active = resolveActiveClip(clips, at);
+  const asset = active === null ? undefined : timeline.assets[active.clip.assetId];
+  const source = useAssetUrls((urls) => active === null ? undefined : urls.get(active.clip.assetId));
+  const slots = useRef<Record<Side, HTMLMediaElement | null>>({ a: null, b: null });
+  const live = useRef<Side>("a");
+  const [visibleSide, setVisibleSide] = useState<Side>("a");
+  const loaded = useRef<Record<Side, string | null>>({ a: null, b: null });
+  const warm = useRef<WarmState | null>(null);
+  const swapStartedAt = useRef(0);
+  const preload = typeof window === "undefined" || new URLSearchParams(window.location.search).get("preload") !== "off";
+  const setA = useCallback((element: HTMLMediaElement | null) => { slots.current.a = element; }, []);
+  const setB = useCallback((element: HTMLMediaElement | null) => { slots.current.b = element; }, []);
 
-  const clips = clipsOnTrack(timeline, firstVideoTrackId(timeline));
-
-  const setLiveSide = (side: Side): void => {
-    liveSideRef.current = side;
-    setLiveSideState(side);
-  };
-  const elementFor = (side: Side): HTMLVideoElement | null =>
-    side === "a" ? videoARef.current : videoBRef.current;
-
-  /**
-   * Warm the hidden element for `next`. No-ops (leaving prior warm state)
-   * when preloading is disabled, the element is missing, or the URL is
-   * unknown. Calls onReady once the element sits paused on inPoint.
-   */
-  const ensureWarm = (next: Clip | null, onReady: () => void): void => {
-    if (!preloadEnabled) return;
-    const side = otherSide(liveSideRef.current);
-    const el = elementFor(side);
-    if (el === null || next === null) return;
-    const url = resolveAssetUrl(next.assetId);
-    if (url === undefined) {
-      if (warmRef.current?.side === side) warmRef.current = null;
-      return;
-    }
-    if (warmMatches(warmRef.current, side, next.assetId)) {
-      if (
-        el.readyState >= READY_STATE_ENOUGH &&
-        el.paused &&
-        Math.abs(el.currentTime * 1000 - next.inPoint) <= SEEK_MATCH_TOLERANCE_MS
-      ) {
-        onReady();
-      }
-      return;
-    }
-    warmRef.current = { side, assetId: next.assetId, clip: next };
-    el.src = url;
-    el.onloadedmetadata = () => {
-      el.currentTime = next.inPoint / 1000;
-      el.onseeked = () => {
-        const stillCurrent =
-          warmRef.current !== null &&
-          warmRef.current.side === side &&
-          warmRef.current.assetId === next.assetId;
-        if (stillCurrent && el.readyState >= READY_STATE_ENOUGH && el.paused) {
-          onReady();
-        }
-      };
-    };
-  };
-
-  const swapToWarm = (warm: WarmState, sourceTimeMs: number, autoplay: boolean): void => {
-    const el = elementFor(warm.side);
-    if (el === null) return;
-    const prev = elementFor(liveSideRef.current);
-    if (prev !== null && prev !== el) prev.pause();
-    swapStartedAtRef.current = performance.now();
-    // Exact position: warming parked on inPoint, the playhead may be past it.
-    if (Math.abs(el.currentTime * 1000 - sourceTimeMs) > SEEK_MATCH_TOLERANCE_MS) {
-      el.currentTime = sourceTimeMs / 1000;
-    }
-    if (autoplay) void el.play().catch(() => undefined);
-    warmRef.current = null;
-    setLiveSide(warm.side);
-  };
-
-  const coldLoad = (
-    side: Side,
-    assetId: string,
-    url: string,
-    sourceTimeMs: number,
-    autoplay: boolean,
-  ): void => {
-    const el = elementFor(side);
-    if (el === null) return;
-    loadedRef.current[side] = assetId;
-    if (isSameSource(el.src, url)) {
-      // Element already shows this source (e.g. refs reset under a live
-      // element): seek and go. Re-setting src would force a full reload.
-      // No stall starts here — nothing swapped.
-      el.currentTime = sourceTimeMs / 1000;
-      if (autoplay && el.paused) void el.play().catch(() => undefined);
-      return;
-    }
-    swapStartedAtRef.current = performance.now();
-    el.src = url;
-    el.onloadedmetadata = () => {
-      el.currentTime = sourceTimeMs / 1000;
-      if (autoplay) void el.play().catch(() => undefined);
-    };
-  };
-
-  /**
-   * Make the visible element match (clips, playhead). Returns false when
-   * there is nothing playable (gap / missing media).
-   */
-  const syncTo = (playhead: number, autoplay: boolean): boolean => {
-    const active = resolveActiveClip(clips, playhead);
-    if (active === null) return false;
-    const url = resolveAssetUrl(active.clip.assetId);
-    if (url === undefined) return false;
-    const side = liveSideRef.current;
-    const live = elementFor(side);
-    if (live === null) return false;
-
-    const warm = warmRef.current;
-    const decision = decideSwap(active.clip.assetId, {
-      liveSide: side,
-      loadedAsset: loadedRef.current,
-      warm:
-        warm === null
-          ? null
-          : {
-              side: warm.side,
-              assetId: warm.assetId,
-              elementReady:
-                (elementFor(warm.side)?.readyState ?? 0) >= READY_STATE_ENOUGH,
-            },
-    });
-    if (decision.kind === "flip" && warm !== null) {
-      swapToWarm(warm, active.sourceTimeMs, autoplay);
-      return true;
-    }
-    if (decision.kind === "coldLoad") {
-      coldLoad(decision.side, active.clip.assetId, url, active.sourceTimeMs, autoplay);
-      return true;
-    }
-    if (!live.seeking) {
-      const driftMs = Math.abs(live.currentTime * 1000 - active.sourceTimeMs);
-      if (driftMs > DRIFT_TOLERANCE_MS) {
-        live.currentTime = active.sourceTimeMs / 1000;
-      }
-      if (autoplay && live.paused) void live.play().catch(() => undefined);
-    }
-    return true;
-  };
-
-  // Scrubbing (paused): playhead is the source of truth.
   useEffect(() => {
-    if (isPlaying) return;
-    syncTo(playheadMs, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playheadMs, isPlaying, timeline]);
-
-  // Playback loop.
-  useEffect(() => {
-    if (!isPlaying) return;
-    let raf = 0;
-    let lastTick = performance.now();
-    const tick = (now: number) => {
-      const store = useEditorStore.getState();
-      const advanced = store.playheadMs + (now - lastTick);
-      lastTick = now;
-
-      const current = resolveActiveClip(clips, advanced);
-      const next = current === null ? null : nextClip(clips, current.clip);
-      const untilEnd =
-        current === null
-          ? Number.POSITIVE_INFINITY
-          : current.clip.start + current.clip.duration - advanced;
-      const warmAction = decideWarm(
-        next?.assetId ?? null,
-        untilEnd,
-        { liveSide: liveSideRef.current, warm: warmRef.current },
-        { preloadEnabled, preloadAheadMs: PRELOAD_AHEAD_MS },
-      );
-      if (warmAction === "warm" && next !== null) {
-        ensureWarm(next, () => undefined);
-      }
-
-      if (!syncTo(advanced, true)) {
-        elementFor(liveSideRef.current)?.pause();
-        store.pause();
+    const pauseSlots = (): void => {
+      slots.current.a?.pause();
+      slots.current.b?.pause();
+    };
+    const start = (element: HTMLMediaElement): void => {
+      if (!useEditorStore.getState().isPlaying) {
+        element.pause();
         return;
       }
-      const live = elementFor(liveSideRef.current);
-      if (live !== null && !live.seeking && !live.paused) {
-        const active = resolveActiveClip(clips, advanced);
-        if (active !== null) {
-          const implied =
-            active.clip.start + (live.currentTime * 1000 - active.clip.inPoint);
-          store.setPlayhead(
-            Math.abs(implied - advanced) > DRIFT_TOLERANCE_MS ? implied : advanced,
-          );
-        } else {
-          store.setPlayhead(advanced);
-        }
-      } else {
-        store.setPlayhead(advanced);
-      }
-      raf = requestAnimationFrame(tick);
+      if (!element.paused) return;
+      void element.play().catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        onError(error instanceof Error ? error.message : "Playback could not start");
+      });
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, timeline]);
+    const current = resolveActiveClip(clips, at);
+    if (current === null || source === undefined || timeline.assets[current.clip.assetId]?.kind === "image") {
+      pauseSlots();
+      return;
+    }
 
-  const activeNow = resolveActiveClip(clips, playheadMs);
-  const missingMedia =
-    activeNow !== null && resolveAssetUrl(activeNow.clip.assetId) === undefined;
-  const mode = preloadEnabled ? "preload on" : "preload off";
+    const desired = current.clip;
+    let side = live.current;
+    const candidate = warm.current;
+    const warmElement = candidate === null ? null : slots.current[candidate.side];
+    const decision = decideSwap(desired.assetId, {
+      liveSide: side,
+      loadedAsset: loaded.current,
+      warm: candidate === null ? null : {
+        ...candidate,
+        elementReady: warmElement !== null && warmElement.readyState >= 3 && isSameSource(warmElement.src, source),
+      },
+    });
+    if (decision.kind === "flip") {
+      slots.current[side]?.pause();
+      side = decision.to;
+      live.current = side;
+      loaded.current[side] = desired.assetId;
+      warm.current = null;
+      swapStartedAt.current = performance.now();
+      setVisibleSide(side);
+    }
+    const element = slots.current[side];
+    if (element === null) return;
+    element.onseeked = () => {
+      const store = useEditorStore.getState();
+      if (store.isPlaying || live.current !== side) return;
+      const latest = resolveActiveClip(clipsOnTrack(store.timeline, track.id), store.playheadMs);
+      if (latest?.clip.assetId !== desired.assetId) return;
+      const targetTime = latest.sourceTimeMs / 1000;
+      if (Math.abs(element.currentTime - targetTime) > 0.001) element.currentTime = targetTime;
+    };
+    const hidden = slots.current[otherSide(side)];
+    hidden?.pause();
+    if (hidden !== null) hidden.volume = 0;
+    element.volume = muted ? 0 : playbackGain(desired, track);
+
+    if (!isSameSource(element.src, source)) {
+      loaded.current[side] = desired.assetId;
+      swapStartedAt.current = performance.now();
+      element.src = source;
+      element.onloadedmetadata = () => {
+        const store = useEditorStore.getState();
+        const latest = resolveActiveClip(clipsOnTrack(store.timeline, track.id), store.playheadMs);
+        if (latest?.clip.assetId !== desired.assetId) return;
+        element.currentTime = latest.sourceTimeMs / 1000;
+        start(element);
+      };
+    } else {
+      const sourceTime = current.sourceTimeMs / 1000;
+      const tolerance = playing ? DRIFT_TOLERANCE_MS : 1;
+      if (!element.seeking && element.readyState >= 1 && Math.abs(element.currentTime - sourceTime) * 1000 > tolerance) {
+        element.currentTime = sourceTime;
+      }
+      start(element);
+    }
+
+    const next = nextClip(clips, desired);
+    if (!preload || !playing || next === null || desired.start + desired.duration - at >= PRELOAD_AHEAD_MS) return;
+    if (timeline.assets[next.assetId]?.kind === "image") return;
+    const nextSource = resolveAssetUrl(next.assetId);
+    const hiddenSide = otherSide(side);
+    const target = slots.current[hiddenSide];
+    if (target === null || nextSource === undefined) return;
+    if (warm.current?.side === hiddenSide && warm.current.assetId === next.assetId && isSameSource(target.src, nextSource)) return;
+    warm.current = { side: hiddenSide, assetId: next.assetId };
+    target.src = nextSource;
+    target.onloadedmetadata = () => {
+      target.currentTime = next.inPoint / 1000;
+    };
+  }, [at, playing, clips, source, timeline, track, muted, preload, onError]);
+
+  useEffect(() => () => {
+    for (const element of Object.values(slots.current)) {
+      if (element === null) continue;
+      element.onloadedmetadata = null;
+      element.onseeked = null;
+      element.pause();
+    }
+  }, []);
 
   const onPlaying = (): void => {
-    if (swapStartedAtRef.current <= 0) return;
-    const ms = performance.now() - swapStartedAtRef.current;
-    swapStartedAtRef.current = 0;
-    recordStall(mode, ms);
+    onReady();
+    if (swapStartedAt.current <= 0) return;
+    window.__stalls = [...(window.__stalls ?? []), {
+      mode: preload ? "preload on" : "preload off",
+      ms: performance.now() - swapStartedAt.current,
+    }];
+    swapStartedAt.current = 0;
+  };
+  const visual = track.kind === "video" && active !== null && asset?.kind !== "audio";
+  const image = asset?.kind === "image";
+  const mediaStyle = (side: Side) => ({
+    position: "absolute" as const,
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "contain" as const,
+    transformOrigin: "center",
+    transform: active === null ? undefined : clipTransform(active.clip),
+    display: visual && !image && side === visibleSide ? "block" : "none",
+  });
+  const failed = (side: Side): void => {
+    if (side === live.current && active !== null && !image) onError(`Could not decode ${asset?.name ?? active.clip.assetId}`);
   };
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: 960,
-          aspectRatio: "16 / 9",
-          background: "#000",
-          borderRadius: 6,
-          overflow: "hidden",
-        }}
-      >
-        <video
-          ref={videoARef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            display: liveSide === "a" ? "block" : "none",
-          }}
-          playsInline
-          preload="auto"
-          onPlaying={onPlaying}
-        />
-        <video
-          ref={videoBRef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            display: liveSide === "b" ? "block" : "none",
-          }}
-          playsInline
-          preload="auto"
-          onPlaying={onPlaying}
-        />
-        {activeNow === null && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#868e96",
-              pointerEvents: "none",
-            }}
-          >
-            Gap — no clip under the playhead
-          </div>
-        )}
-        {missingMedia && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#ffa94d",
-              pointerEvents: "none",
-            }}
-          >
-            Media not local yet: {activeNow?.clip.assetId}
-          </div>
-        )}
+    <div data-player-track={track.id} data-active-clip={active?.clip.id} style={{ position: "absolute", inset: 0, zIndex: order, pointerEvents: "none" }}>
+      {track.kind === "audio" ? (
+        <>
+          <audio ref={setA} preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
+          <audio ref={setB} preload="auto" onPlaying={onPlaying} onError={() => failed("b")} />
+        </>
+      ) : (
+        <>
+          <video ref={setA} style={mediaStyle("a")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
+          <video ref={setB} style={mediaStyle("b")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("b")} />
+        </>
+      )}
+      {visual && image && source !== undefined && active !== null && (
+        <img src={source} alt={asset?.name ?? "Timeline graphic"} onLoad={onReady} onError={() => onError(`Could not decode ${asset?.name ?? active.clip.assetId}`)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", transform: clipTransform(active.clip), transformOrigin: "center" }} />
+      )}
+    </div>
+  );
+}
+
+export function Player({ zoom = "fit", fill = false }: { readonly zoom?: "fit" | number; readonly fill?: boolean }) {
+  const timeline = useEditorStore((state) => state.timeline);
+  const at = useEditorStore((state) => state.playheadMs);
+  const playing = useEditorStore((state) => state.isPlaying);
+  const hidden = useUiStore((state) => state.hiddenTrackIds);
+  const muted = useUiStore((state) => state.mutedTrackIds);
+  const urls = useAssetUrls();
+  const viewport = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 960, height: 540 });
+  const [error, setError] = useState<string | null>(null);
+  const onError = useCallback((message: string) => {
+    setError(message);
+    useEditorStore.getState().pause();
+  }, []);
+  const onReady = useCallback(() => setError(null), []);
+  const visibleTracks = timeline.tracks.filter((track) => !hidden.includes(track.id));
+  const layers = resolvePlaybackLayers(timeline, at, hidden);
+  const visualLayers = layers.filter((layer) => layer.track.kind === "video");
+  const missing = layers.find((layer) => !urls.has(layer.clip.assetId));
+  const canvasAsset = Object.values(timeline.assets).find((asset) => asset.kind !== "audio" && asset.width !== undefined && asset.height !== undefined);
+  const width = canvasAsset?.width ?? 1280;
+  const height = canvasAsset?.height ?? 720;
+  const scale = zoom === "fit" ? Math.min(size.width / width, size.height / height) : zoom;
+
+  useEffect(() => {
+    const element = viewport.current;
+    if (element === null) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!playing) return;
+    let request = 0;
+    let previousFrame: number | null = null;
+    const tick = (frame: number): void => {
+      const store = useEditorStore.getState();
+      if (!store.isPlaying) return;
+      const next = advancePlayback({ at: store.playheadMs, previousFrame, frame, duration: timelineDuration(store.timeline) });
+      previousFrame = frame;
+      store.setPlayhead(next.time);
+      if (next.ended) {
+        store.pause();
+        return;
+      }
+      request = requestAnimationFrame(tick);
+    };
+    request = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(request);
+  }, [playing]);
+
+  return (
+    <div className="player-compositor" style={{ position: "relative", height: fill ? "100%" : undefined, aspectRatio: fill ? undefined : "16 / 9", maxWidth: fill ? undefined : 960, marginBottom: 0 }}>
+      <div ref={viewport} className="player-viewport" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#000" }}>
+        <div className="player-stage" data-canvas-width={width} data-canvas-height={height} style={{ position: "absolute", left: "50%", top: "50%", width, height, transformOrigin: "center", transform: `translate(-50%, -50%) scale(${scale})` }}>
+          {visibleTracks.map((track, index) => <TrackPlayer key={track.id} track={track} order={index} muted={muted.includes(track.id)} onError={onError} onReady={onReady} />)}
+        </div>
+        {visualLayers.length === 0 && <div className="player-message">Gap — no clip under the playhead</div>}
+        {missing !== undefined && <div className="player-message player-message-warning">Media not local yet: {missing.clip.assetId}</div>}
+        {error !== null && <div role="alert" className="player-message player-message-warning">{error}</div>}
       </div>
     </div>
   );

@@ -158,8 +158,8 @@ side is the whole system today — one browser, one project, no sharing.
   tracks), `cutroom.ts` (lossless native JSON, versioned, with an
   importer), and `index.ts` — the `EXPORT_FORMATS` registry the UI
   renders. Adding a format = one serializer + one registry entry.
-- 98 engine tests green (ops 16 incl. 4 model, history 11, merge 13,
-  lint 16, otio 10, export 18, lintDelta 14), `tsc --noEmit` clean
+- 136 engine tests green (including 35 editorial feature regressions),
+  `tsc --noEmit` clean
 - Tests cover: split determinism across branches, clean merge, field
   conflict, the overlap case a naive merge misses, no auto-shift,
   delete-vs-modify, concurrent-add conflict, asset-bounds rejection,
@@ -169,19 +169,21 @@ side is the whole system today — one browser, one project, no sharing.
 
 **Built, browser-tested (`apps/web`, committed through `33542f3`):**
 - Zustand store over engine `History` (dispatch/undo/redo/select/playhead/zoom), narrow selectors
-- **Editor shell** (VS Code feel): activity-bar icon rail (Media /
-  Versions / Issues) switching the side panel, resizable panels via
-  `react-resizable-panels` (4 nested groups: side/centre/inspector,
-  preview/editor, workspace/bottom) with sizes persisted per group id in
-  localStorage, editor tabs (Timeline | Diff | Merge), bottom panel with
-  Issues/Activity tabs, status line (branch, dirty state, issue count,
+- **Editor shell** (dark editorial layout): labeled Media / Versions / Issues / Settings
+  tabs switching the media browser, resizable panels via
+  `react-resizable-panels` (monitors/sequence and library/viewer/properties)
+  with sizes persisted per group id in localStorage. A full-width timeline
+  sits below the monitors, with editor tabs (Timeline | Diff | Merge).
+  A collapsible Review drawer contains Issues/Activity tabs. Status line
+  (branch, dirty state, issue count,
   timecode, author), Ctrl+K command palette (fuzzy subsequence filter,
   unit-tested)
 - Timeline: toolbar (split/delete/zoom), ruler with timecode, V1/A1 track
   headers, **draggable playhead** with a handle (pointer + arrow keys,
   `role="slider"`). `data-timeline-lane` kept on the real lane so
   `headed.html` still measures the real timeline.
-- Player: double-buffered `<video>` pair — hidden element warmed to
+- Player: per-track double-buffered native video/audio plus image layers
+  and CSS transforms. The hidden element is warmed to
   `readyState >= 4` on inPoint ~1s before each boundary, roles flip at the
   cut, swap decisions (`decideSwap`/`decideWarm` in `lib/swap.ts`) unit-tested
   (14 tests). Replaced an earlier single-element design whose preload was a
@@ -189,8 +191,7 @@ side is the whole system today — one browser, one project, no sharing.
   event, logged `(preload on/off)`; headed measurement still pending
 - Preview region: large player + transport with `HH:MM:SS:FF` timecode,
   play/pause and **previous/next cut** buttons (pure `previousCut` /
-  `nextCut`, unit-tested). Player logic untouched — only where it renders
-  changed.
+  `nextCut`, unit-tested), Fit/100%/50% preview sizing and fullscreen.
 - Interactions: split at playhead (button + `S`), delete (`Delete`), edge-drag trim (one op on release, clamped), shortcuts, author identity in localStorage
 - Diagnostics overlay: `lint()` memoized per timeline, clip markers + panel with click-to-jump
 - Blame + activity feed: `authorsByClip` fanned to clips (author color dots), op log rendered as a session transcript (✓ applied / ↩ undone, author dots, `#seq`)
@@ -202,10 +203,10 @@ side is the whole system today — one browser, one project, no sharing.
   commit, `back to <branch>` returns. 5 tests cover the semantics.
 - **Visual commit graph** (Versions panel → Graph tab): lanes, per-branch
   line colours, branch badges, click a dot to check that version out.
-  Lane assignment is *branch-based*: the current branch keeps lane 0 and
-  side branches fork right — the earlier draw-order allocation put a new
-  branch leftmost so forks never looked like forks. 12 tests cover
-  ordering, lanes, fork visibility, edge tagging and branch-with-no-commits.
+  Lane assignment is *branch-based*: main keeps lane 0 and side branches
+  fork right, independent of checkout. 14 layout tests and 2 component
+  tests cover ordering, forks, merged/deleted branches, stable checkout,
+  HEAD labels and shared tips.
 - Colour-coded diff view on the timeline: added/removed/moved/trimmed/edited
   each get a tint *and* a text cue, removed clips render as dashed ghosts at
   their old position, moved clips get a link from old to new. Triggered by
@@ -244,22 +245,22 @@ side is the whole system today — one browser, one project, no sharing.
   the merge is committed, with an explicit "commit it anyway" confirmation
   when it introduces problems — it warns, it does not block), and the
   commit panel (delta against the parent commit).
-- UI language: warm orange accent, monospace transcript, keyboard-first.
+- UI language: charcoal/olive surfaces, pale chartreuse accent, monospace
+  transcript and timecode, keyboard-first.
   Demo seeders and the placeholder "agent" panel were removed as fake UI —
   nothing in the product is a mock.
 - Perf harness pages: `perf.html` (engine ops in a browser JS runtime only)
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 117 web tests green (16 files: store 4, timeScale 4, timecode 9, playback 5,
-  describeOp 1, vcs 12, swap policy 20, diffView mapping 6, palette 5,
-  commitGraph 12, layout 4, commands 8, persistence 17, media 10), `tsc`
-  clean, `vite build` succeeds. Total 215 across the workspace.
+- 255 web tests green; engine/web `tsc` clean, `vite build` succeeds.
+  Total 391 tests in 46 files across the workspace.
 - **Untested by unit tests (browser-only):** the OPFS calls themselves
   (getDirectory, createWritable, readMediaUrl). jsdom does not implement
   OPFS and `fake-indexeddb` only covers IndexedDB, so those paths are
-  exercised manually: upload a file, refresh, confirm the clip still
-  plays. The reference-counting rule that decides whether a file may be
+  exercised by `scripts/verify-editor.mjs` in real headless Google Chrome:
+  upload a file, refresh without interaction, confirm decoded frames and
+  advancing playback. The reference-counting rule that decides whether a file may be
   deleted *is* unit-tested.
 - **Not wired to any UI:** `lib/commands.ts` — the fixed-grammar command
   parser (`split at 2s`, `close gaps`, `goto 1:30`, …) with 8 passing
@@ -269,6 +270,159 @@ side is the whole system today — one browser, one project, no sharing.
   (Ctrl+K → "Close gaps").
 
 ## Known issues (match reality, not older notes)
+
+- **Selected sidebar visibility on 2026-10-25.** The subdued shadcn row
+  was too hard to identify. The active destination now has a stronger neutral
+  fill, inset outline, bold white label and trailing checkmark. Colour stripe
+  remains removed. One new test checks that only the active item has a marker;
+  live navigation checks that the marker follows selection. Updated screenshot:
+  `.gstack/shadcn-sidebar/sidebar.png`. Typecheck and production build pass.
+
+- **Sidebar menu correction on 2026-10-25.** User rejected the rail's pill,
+  coloured icon and left stripe. ActivityBar now uses the fixed-sidebar menu
+  subset of shadcn's composition (`SidebarMenu`, `SidebarMenuItem`,
+  `SidebarMenuButton`), with 32px neutral rows, a workspace group, an export
+  separator and bottom settings. Header export is preserved; sidebar export
+  uses the same menu-button primitive. Three added regressions cover menu
+  semantics, disabled/current states and both export triggers. Live Chrome
+  checks navigation, neutral active styles, no stripe, export JSON download
+  and laptop layout: `.gstack/verify-sidebar.mjs`. Screenshots:
+  `.gstack/shadcn-sidebar/`. Web typecheck and production build pass.
+
+- **Neutral dark correction on 2026-10-25.** User identified the navy tint
+  in the first dark palette. All chrome, panels, inputs, lanes, borders,
+  selections, ordinary text and scrollbars now use neutral grayscale.
+  Accent/status colours remain. Command and export hovers use shared raised
+  surface tokens. A new palette regression rejects tinted surface/text
+  values; the browser dark check now asserts achromatic computed backgrounds
+  in addition to luminance and contrast. Desktop/laptop screenshots are in
+  `.gstack/neutral-dark/`; menus, graph, settings, commands and playback pass
+  `.gstack/verify-dark-ui.mjs`.
+
+- **Dark editor on 2026-10-25.** User requested a dark UI. The editorial
+  workspace now uses charcoal panels, darker inset inputs, soft blue accents,
+  brighter text, visible panel borders, larger media labels and numeric fields,
+  and a shorter header. Timeline lanes, verification, graph/HEAD, menus,
+  settings, command palette, scrollbars and native form controls follow the
+  same dark palette. Graph colours are lighter for dark surfaces. Primary
+  action labels use dark ink on blue for contrast. Two palette tests verify
+  at least 4.5:1 contrast for normal and diagnostic text and primary labels;
+  four component checks retain button/input/verification/review semantics.
+  Browser checks in `.gstack/verify-dark-ui.mjs` assert actual computed
+  surface luminance and text contrast, playback, menu/graph/verification/
+  settings/command rendering and laptop bounds; screenshots and colour
+  readings are in `.gstack/dark-editorial/`. Functional feature regression
+  evidence is in `.gstack/dark-editorial-features-final/`.
+  Subsequent user feedback requested standard components and quieter tabs.
+  Installed `@radix-ui/react-tabs`; added shadcn-composed `ui/tabs.tsx` and
+  migrated media, inspector, versions, editor and review tabs. History/Graph
+  uses a compact segmented control; other tabs use neutral underlines.
+  Arrow/Home/End navigation, selected panel rendering and ARIA relationships
+  pass the live `.gstack/verify-tabs.mjs` check and two component regressions.
+  Theme tokens now use `@theme static`: Tailwind previously omitted the
+  warning variable while a utility still inlined its literal value, causing
+  variable-based inline colours to inherit. Computed warning token/utility
+  equality is checked by `scripts/verify-editor.mjs`.
+  The complete playback/restore/cut/split/undo/layout/merge/commit flow passes
+  in `.gstack/dark-regression-complete/`; media tab sizing leaves room for
+  grid/list controls at desktop and laptop widths. Typecheck and production
+  build pass with the Radix dependency.
+
+- **Branch graph correction on 2026-10-25.** Lane assignment now anchors
+  main rather than the checked-out branch, so feature commits fork visibly
+  even when main has no newer work. Checkout keeps geometry unchanged.
+  Shared tips share a dot; second-parent history retains a side lane after
+  its branch name is deleted. Graph nodes/edges use consistent lane colours,
+  current branch labels show HEAD, and rows fit within the sidebar. Four
+  added regressions cover deleted branch pointers, fallback lane stability,
+  rendered forks/HEAD and uninitialized state; the existing current-feature
+  regression now requires separate main/feature lanes and stable checkout.
+  Isolated Chrome reproduction matches main/s/twovideos from the reported
+  screenshot: `.gstack/verify-branch-graph.mjs`, screenshot
+  `.gstack/branch-graph-fixed.png`. No changes to saved user projects.
+
+- **Approved design A implemented on 2026-10-25.** This supersedes the
+  earlier studio layouts below: white/silver panels, cobalt controls,
+  vertical activity rail, three-column contact sheet, black program monitor,
+  Clip/Sequence/Project inspector, version rail and full-width timeline.
+  New panel persistence IDs are `editorial-workspace` / `editorial-monitors`.
+  Functional additions: footage/graphics/sequences browsing, filename/ID/tag
+  search, grid/list, editable tags, image/audio/video import, position X/Y,
+  linked or independent scale, rotation/reset, numeric start/in/out trim,
+  volume, track assignment, clip dragging, add video track, hide/mute/lock,
+  zoom slider/fit, preview zoom/fullscreen, rename project and frame rate.
+  New-version creation preserves uncommitted edits; branch switching guards
+  clip and metadata changes. Track flags persist locally in localStorage;
+  creative transforms, added tracks and project settings are engine ops.
+  Engine merge handles semantic transform defaults, project conflicts,
+  new tracks/assets and three-way tags (independent additions and removals).
+  Native JSON preserves all fields; OTIO stores transforms as Cutroom
+  metadata. EDL/FCPXML omit visual transforms. Preview uses native media
+  layers and CSS, with later video tracks above earlier ones; exports are
+  timeline files, never an encoded video. No transitions or waveforms added.
+  `scripts/verify-editorial.mjs` passed search/tags, transforms/volume,
+  hide/mute/lock, trim/drag/zoom, graphics, fullscreen, settings, version
+  creation, native download and refresh recovery with actual demo media.
+  Evidence: `.gstack/editorial-features/`. The original upload/restore,
+  cut playback, split/undo/redo, laptop geometry, merge/resolve/commit and
+  restore checks passed in `.gstack/editorial-regression/`. Layered video,
+  independent audio/image playback and a 50ms seek were browser-verified
+  with `.gstack/layered-playback-small-seek-check.mjs`. Final desktop/laptop
+  screenshots with four real Sintel excerpts: `.gstack/editorial-final/`.
+
+- **Studio redesign on 2026-10-25 supersedes the layout polish below.**
+  After feedback that the first pass still resembled a code editor, the
+  workspace now uses a media browser, program monitor and properties row
+  above a full-width sequence. The old large Issues pane is a collapsible
+  Review drawer. New `studio-workspace` / `studio-monitors` persistence
+  IDs prevent old proportions from forcing the old shape; previous
+  localStorage entries are preserved. Two throwaway compositions were
+  compared in `.gstack/studio-prototypes/`. Media tiles extract actual
+  JPEG frames at up to 320×180. A shared cache holds at most 64 ready
+  images; mounted tiles retain their own frame so cache eviction does not
+  blank them. Decoder probes clean up after success, failure, abort and a
+  10-second timeout. Timeline clips reuse ready posters without starting
+  additional decoders. Strips repeat one representative source frame,
+  not frame-by-frame thumbnails. No waveform analysis or fake waveforms
+  were added. Inspector groups actual timing, source and audio values;
+  split availability updates with the playhead. Screenshots with four
+  real Sintel trailer excerpts are in `.gstack/studio-final/`; these are
+  isolated QA fixtures, not seeded product state. Functional workflow and
+  geometry checks are in `.gstack/studio-workflow-final/`. The cache
+  eviction browser regression is `.gstack/poster-eviction-check.mjs`.
+
+- **Editor UI polish on 2026-10-25.** Preview sizing now fits the full
+  video frame inside the resizable panel instead of cropping its lower
+  portion. New default panel proportions give preview more space and
+  reduce unused bottom-panel space; existing saved layouts still win.
+  Version controls are stacked with explicit field names and readable
+  history rows so the sidebar no longer scrolls horizontally. Media has a
+  named library, import action in its empty state, and duration/size rows.
+  Dark surfaces, text contrast, focus outlines and the orange selected
+  rail state are updated. Verified at 1440×900 and 1100×720 with browser
+  geometry assertions and screenshots in `.gstack/ui-after-layout/` and
+  `.gstack/ui-workflow-final/`. The full upload, playback, refresh,
+  cut switch, split/undo/redo and merge-through-commit flow still passes.
+  Small-phone layouts and touch workflows are not covered by this pass.
+
+- **Media and merge repairs verified on 2026-10-25.** Upload probing had
+  revoked the URL later registered for playback; the upload pipeline now
+  retains accepted URLs and revokes rejected ones. It snapshots the input
+  selection before asynchronous work so resetting a live file picker does
+  not drop subsequent files. The asset URL registry is reactive so the
+  player notices asynchronously restored OPFS media. Playback initializes
+  its clock from the first animation frame, avoiding a negative first
+  delta from mixing `performance.now()` and frame timestamps. Merge
+  headings name the checked-out destination instead of repeating the
+  source. Browser verification covers original MP4 upload/playback,
+  reload/decode/playback without a preceding edit, two-file selection,
+  playback across a cut using short excerpts, split/undo/redo, divergent
+  splits, overlap resolution, lint delta, merge commit on main, and merge
+  plus media restoration. These are functional checks, not representative
+  performance measurements or audio-quality assessment. Evidence is in
+  `.gstack/media-fix-verification-4/`; the repeatable runner is
+  `scripts/verify-editor.mjs`. Existing uncommitted timeline/merge work was
+  preserved; these repairs are not committed.
 
 - **Old preload was a no-op — retired, fix shipped unmeasured.** The first
   player warmed a separate hidden element nothing ever consumed (no
@@ -297,9 +451,8 @@ side is the whole system today — one browser, one project, no sharing.
   with a real XML parser; EDL event/track mapping is unit-tested), but
   "opens in Premiere" is untested here — no display, no NLE. Say
   "interchange format with round-trip tests", not "works in Resolve".
-- **Frame rate is not in the model.** Exports take a `fps` option
-  (30fps default, matching the timecode readout). A project cannot yet
-  switch frame rate, so a 24fps source exported as 30fps drifts.
+- **Frame rate is an integer project setting.** It defaults to 30fps;
+  fractional rates such as 23.976 are not supported.
 - **The commit graph draws structure, not media.** A branch with no
   commits of its own has no lane (correctly — there is no fork to draw),
   so a graph of branch pointers alone can look like a single line.
