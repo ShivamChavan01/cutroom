@@ -1,12 +1,18 @@
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assistantHandler, responseText } from "./assistant";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
-async function server(env: Record<string, string> = { OPENAI_API_KEY: "test-secret", OPENAI_MODEL: "test-model" }, upstream = vi.fn<typeof fetch>()) {
-  const app = createServer(assistantHandler(env, upstream));
+async function server(env: Record<string, string> = { OPENAI_API_KEY: "test-secret", OPENAI_MODEL: "test-model" }, upstream = vi.fn<typeof fetch>(), options: { hosted?: boolean; parsedBody?: unknown } = {}) {
+  const handler = assistantHandler(env, upstream, options);
+  const app = createServer((request, response) => {
+    if (options.parsedBody !== undefined) {
+      request.resume();
+      void handler(Object.assign(request, { body: options.parsedBody }), response);
+    } else void handler(request, response);
+  });
   await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
   cleanups.push(() => new Promise<void>((resolve, reject) => { app.closeAllConnections(); app.close((error) => error ? reject(error) : resolve()); }));
   const address = app.address();
@@ -130,5 +136,91 @@ describe("OpenAI server boundary", () => {
     controller.abort();
     await pending;
     await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+  });
+});
+
+// Node's fetch owns the Host header. Use an actual HTTP request to exercise
+// the same Host/Origin pairing that Vercel forwards in production.
+function hostedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method: init.method ?? "GET", headers: Object.fromEntries(new Headers(init.headers)) }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: response.statusCode ?? 500 })));
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(init.body);
+  });
+}
+
+describe("hosted assistant boundary", () => {
+  const env = { AI_PROVIDER: "groq", GROQ_API_KEY: "provider-secret", ASSISTANT_ACCESS_CODE: "reviewer-code" };
+  const headers = { "Content-Type": "application/json", Host: "cutroom-editor.vercel.app", Origin: "https://cutroom-editor.vercel.app", Authorization: "Bearer reviewer-code" };
+  const plan = { summary: "Review these findings", ops: [] };
+  const upstream = () => vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(plan) } }] })));
+
+  it("serves safe configuration on the deployed host and fails closed without an access code", async () => {
+    const app = await server({ AI_PROVIDER: "groq", GROQ_API_KEY: "provider-secret" }, upstream(), { hosted: true });
+    const result = await hostedFetch(app.url.replace("propose", "config"), { headers });
+    expect(await result.json()).toEqual({ provider: "Groq", model: "openai/gpt-oss-120b", configured: false, accessRequired: true });
+    const denied = await hostedFetch(app.url, { ...post, headers });
+    expect(denied.status).toBe(503);
+    expect(await denied.text()).not.toContain("provider-secret");
+    expect(app.upstream).not.toHaveBeenCalled();
+  });
+  it.each(["", "Bearer wrong-code", "reviewer-code", "Bearer provider-secret"])("rejects invalid authorization without contacting the provider: %s", async (authorization) => {
+    const app = await server(env, upstream(), { hosted: true });
+    expect((await hostedFetch(app.url, { ...post, headers: { ...headers, Authorization: authorization } })).status).toBe(401);
+    expect(app.upstream).not.toHaveBeenCalled();
+  });
+  it("accepts the reviewer code, including a routing query, without sending that code upstream", async () => {
+    const app = await server(env, upstream(), { hosted: true });
+    const result = await hostedFetch(`${app.url}?action=propose`, { ...post, headers });
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual(plan);
+    expect(JSON.stringify(app.upstream.mock.calls)).not.toContain("reviewer-code");
+    expect(app.upstream.mock.calls[0]?.[1]?.headers).toEqual(expect.objectContaining({ Authorization: "Bearer provider-secret" }));
+  });
+  it.each([JSON.parse(body), body, Buffer.from(body)])("accepts Vercel's already-parsed body as well as raw body representations", async (parsedBody) => {
+    const app = await server(env, upstream(), { hosted: true, parsedBody });
+    expect((await hostedFetch(app.url, { ...post, headers })).status).toBe(200);
+    expect(app.upstream).toHaveBeenCalledOnce();
+  });
+  it.each([[null, 400], [[], 400], ["bad JSON", 400], [{ prompt: "x", context: "x".repeat(250_001) }, 400], ["x".repeat(1_100_001), 413]])("rejects invalid parsed request bodies before calling the provider", async (parsedBody, status) => {
+    const app = await server(env, upstream(), { hosted: true, parsedBody });
+    expect((await hostedFetch(app.url, { ...post, headers })).status).toBe(status);
+    expect(app.upstream).not.toHaveBeenCalled();
+  });
+  it("preserves cross-origin protection even with the correct access code", async () => {
+    const app = await server(env, upstream(), { hosted: true });
+    expect((await hostedFetch(app.url, { ...post, headers: { ...headers, Origin: "https://elsewhere.test" } })).status).toBe(403);
+    expect(app.upstream).not.toHaveBeenCalled();
+    expect((await hostedFetch(app.url.replace("propose", "unknown"), { headers })).status).toBe(404);
+    expect((await hostedFetch(app.url.replace("/api/assistant/propose", "//["), { headers })).status).toBe(400);
+  });
+  it("exports an authenticated Vercel entry point using the same server handler", async () => {
+    const provider = upstream();
+    vi.stubGlobal("fetch", provider);
+    vi.stubEnv("AI_PROVIDER", "groq");
+    vi.stubEnv("GROQ_API_KEY", "provider-secret");
+    vi.stubEnv("ASSISTANT_ACCESS_CODE", "reviewer-code");
+    try {
+      const { default: handler } = await import("../../../api/assistant/[action]");
+      const app = createServer(handler);
+      await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+      cleanups.push(() => new Promise<void>((resolve, reject) => { app.closeAllConnections(); app.close((error) => error ? reject(error) : resolve()); }));
+      const address = app.address();
+      if (address === null || typeof address === "string") throw new Error("No listener");
+      const url = `http://127.0.0.1:${address.port}/api/assistant/propose`;
+      expect((await hostedFetch(url, { ...post, headers: { ...headers, Authorization: "" } })).status).toBe(401);
+      expect(provider).not.toHaveBeenCalled();
+      const result = await hostedFetch(url, { ...post, headers });
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual(plan);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
   });
 });

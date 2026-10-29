@@ -8,11 +8,10 @@ own hard problems with working code instead of claims:
 
 [Try the hosted editor](https://cutroom-editor.vercel.app/).
 Import your own footage; project data and media stay in your browser.
-The hosted demo includes timeline editing, version control and verification.
-The AI assistant currently requires the local server and is unavailable on
-the static demo. Vercel builds the monorepo using `vercel.json` and deploys
+The hosted demo includes timeline editing, version control, verification and
+an AI assistant protected by a reviewer access code. Vercel builds the monorepo using `vercel.json` and deploys
 the connected `main` branch. The checked GitHub Pages deployment remains
-available as a [mirror](https://shivamchavan01.github.io/cutroom/).
+available as a [static mirror](https://shivamchavan01.github.io/cutroom/) without the AI endpoint.
 
 ## What works
 
@@ -189,7 +188,12 @@ history and version workflow; Undo reverses one operation at a time.
 Changed timelines invalidate previews, and track locks are checked again
 when applying. Finish or cancel a merge before using the assistant.
 
-Configure the key on this computer:
+For the hosted demo, enter the project owner's **Assistant access code** in
+the Assistant panel. This is a separate demo credential, not a provider API key;
+the panel holds it in memory until reload. The request uses an Authorization
+header and never includes the code in model context.
+
+For local development, configure the provider key on this computer:
 
 ```sh
 cp apps/web/.env.example apps/web/.env.local
@@ -207,15 +211,23 @@ secrets. The request sends the prompt, timeline metadata (including asset
 names) and verification findings. It sends no media bytes. This is structural
 verification: the assistant cannot watch footage, hear dialogue, transcribe,
 dub or generate missing media. Usage is billed to your configured provider
-account. The panel reads the active provider from the local server and names
+account. The panel reads the active provider from the server and names
 it in the data disclosure; configuration responses contain no credentials.
 
-The endpoint works in Vite development and local `vite preview` after a build.
-It accepts only local connections through `localhost`/`127.0.0.1`/`[::1]`,
-checks request origins, limits request size and concurrent calls, and times
-out upstream calls after 60 seconds. A static host alone cannot run this API;
-public hosting needs a server with authentication and per-user credentials
-or billing limits.
+The endpoint works in Vite development and local `vite preview` after a build;
+these remain limited to `localhost`/`127.0.0.1`/`[::1]`. On Vercel,
+`api/assistant/[action].ts` runs the same handler as a Node.js Function.
+Set `AI_PROVIDER`, the matching key/model variables, and `ASSISTANT_ACCESS_CODE`
+as server-side Production environment variables, then redeploy. Without an
+access code, hosted proposals fail closed. Preview environments need their
+own variables before the assistant can be used.
+
+Both modes check request origins, bound request size and model output, and
+time out upstream calls after 60 seconds. Concurrent proposals are limited
+per server instance; this is not a global rate limit or spending cap. The
+shared code is intended for a small reviewer demo; rotate it in Vercel when
+needed and configure usage limits with the provider. Static hosting alone
+cannot run this endpoint.
 
 Supported proposals: move, trim, split, delete, volume and transform changes
 to existing clips, up to 50 operations on timelines up to 1,000 clips.
@@ -236,3 +248,8 @@ Live Groq checks with GPT-OSS 120B passed for a gap fix, locked-track
 explanation and explanation-only request. The real gap proposal passed the
 engine preview, apply, undo/redo and reload checks. These three cases are a
 smoke test, not a broad model-quality benchmark. Live OpenAI remains unverified.
+
+The Vercel Groq smoke check also passed on 2026-10-29: configuration, rejected
+missing/incorrect access codes, cross-origin rejection, a real move proposal
+without premature mutation, explicit apply, undo/redo, and refresh restoration.
+The access code was cleared on refresh and no browser runtime errors occurred.

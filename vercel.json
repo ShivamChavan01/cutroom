@@ -3,5 +3,8 @@
   "framework": "vite",
   "installCommand": "pnpm install --frozen-lockfile --ignore-scripts",
   "buildCommand": "pnpm --dir apps/web run build",
-  "outputDirectory": "apps/web/dist"
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/assistant/[action].ts": { "maxDuration": 90 }
+  }
 }

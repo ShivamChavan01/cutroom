@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
-import { AssistantPanel, ProposalReview } from "./AssistantPanel";
+import { AssistantAccessCode, AssistantPanel, ProposalReview } from "./AssistantPanel";
 import { parsePlan, previewPlan } from "../lib/assistant/proposal";
 
 const before = { ...putAsset(emptyTimeline(), { id: "a", kind: "video", duration: 10_000 }), clips: { c: makeClip({ id: "c", assetId: "a", trackId: "v1", start: 1000, duration: 1000, inPoint: 0, volume: 1 }) } };
 describe("assistant presentation", () => {
+  it("renders a labeled password field for reviewer access without saving credentials", () => {
+    const html = renderToStaticMarkup(<AssistantAccessCode value="" onChange={() => {}} />);
+    expect(html).toContain('for="assistant-access-code"');
+    expect(html).toContain('type="password"');
+    expect(html).toContain('autoComplete="off"');
+    expect(html).toContain("until you reload");
+    expect(html).not.toContain("API key");
+  });
   it("shows the issue workflow and disclosure without assuming a provider before configuration loads", () => {
     const html = renderToStaticMarkup(<AssistantPanel />);
     expect(html).toContain('aria-label="AI verification assistant"');

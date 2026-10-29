@@ -8,8 +8,20 @@ const signal = new AbortController().signal;
 describe("assistant client", () => {
   it("reads the actual provider for the disclosure without requesting a key", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('{"provider":"Groq","model":"openai/gpt-oss-120b","configured":true}'));
-    expect(await assistantConfiguration(signal, fetcher)).toEqual({ provider: "Groq", model: "openai/gpt-oss-120b", configured: true });
+    expect(await assistantConfiguration(signal, fetcher)).toEqual({ provider: "Groq", model: "openai/gpt-oss-120b", configured: true, accessRequired: false });
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/assistant/config");
+  });
+  it("reads the hosted access requirement and keeps the access code out of timeline context", async () => {
+    const configFetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ provider: "Groq", model: "x", configured: true, accessRequired: true }));
+    expect((await assistantConfiguration(signal, configFetcher)).accessRequired).toBe(true);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ summary: "No edits", ops: [] }));
+    await requestProposal({ ...input, accessCode: " reviewer-code " }, signal, fetcher);
+    expect(fetcher.mock.calls[0]?.[1]?.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer reviewer-code" });
+    expect(String(fetcher.mock.calls[0]?.[1]?.body)).not.toContain("reviewer-code");
+  });
+  it("reports unavailable routes and rejects malformed hosted configuration", async () => {
+    await expect(assistantConfiguration(signal, vi.fn<typeof fetch>().mockResolvedValue(new Response("<html>missing route</html>")))).rejects.toThrow("configuration");
+    await expect(assistantConfiguration(signal, vi.fn<typeof fetch>().mockResolvedValue(Response.json({ provider: "Groq", model: "x", configured: true, accessRequired: "true" })))).rejects.toThrow("configuration");
   });
   it.each([{}, null, { provider: "Unknown", model: "x", configured: true }, { provider: "Groq", model: 5, configured: true }, { provider: "Groq", model: "x", configured: "true" }])("rejects malformed provider configuration: %j", async (body) => {
     await expect(assistantConfiguration(signal, vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body))))).rejects.toThrow("configuration");

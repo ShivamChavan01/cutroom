@@ -10,6 +10,14 @@ import { Button } from "./ui/button";
 type Proposal = ReturnType<typeof previewPlan>;
 type State = { kind: "idle" } | { kind: "loading" } | { kind: "ready"; proposal: Proposal } | { kind: "error"; message: string } | { kind: "applied"; count: number };
 
+export function AssistantAccessCode({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <div>
+    <label htmlFor="assistant-access-code">Assistant access code</label>
+    <input id="assistant-access-code" className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground" type="password" autoComplete="off" value={value} onChange={(event) => onChange(event.target.value)} />
+    <p className="assistant-disclosure">Ask the project owner for the demo access code. It stays in this panel until you reload.</p>
+  </div>;
+}
+
 function describeEdit(op: Op) {
   switch (op.type) {
     case "moveClip": return `Move ${op.clipId} to ${(op.start / 1000).toFixed(2)}s${op.trackId === undefined ? "" : ` on ${op.trackId}`}`;
@@ -47,6 +55,7 @@ export function AssistantPanel() {
   const pendingMerge = useVcsStore((state) => state.pending);
   const issues = useMemo(() => lint(timeline), [timeline]);
   const [prompt, setPrompt] = useState("Explain the current verification issues and propose the smallest safe fixes. Preserve my footage.");
+  const [accessCode, setAccessCode] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
   const [configuration, setConfiguration] = useState<Awaited<ReturnType<typeof assistantConfiguration>> | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
@@ -68,7 +77,7 @@ export function AssistantPanel() {
     setState({ kind: "loading" });
     const store = useEditorStore.getState();
     try {
-      const proposal = await requestProposal({ prompt, before: store.timeline, selectedClipId: store.selectedClipId, playheadMs: store.playheadMs, lockedTrackIds: useUiStore.getState().lockedTrackIds }, active.signal);
+      const proposal = await requestProposal({ prompt, before: store.timeline, selectedClipId: store.selectedClipId, playheadMs: store.playheadMs, lockedTrackIds: useUiStore.getState().lockedTrackIds, accessCode }, active.signal);
       if (!active.signal.aborted) setState({ kind: "ready", proposal });
     } catch (cause) {
       if (!active.signal.aborted) setState({ kind: "error", message: cause instanceof Error ? cause.message : "Could not generate a proposal." });
@@ -90,11 +99,13 @@ export function AssistantPanel() {
     <p>Explain verification findings and review suggested edits before changing your timeline.</p>
     <div className="assistant-issue-count">{issues.length} current {issues.length === 1 ? "finding" : "findings"}</div>
     <form onSubmit={(event) => { event.preventDefault(); void request(); }}>
+      {configuration?.accessRequired && <AssistantAccessCode value={accessCode} onChange={setAccessCode} />}
       <label htmlFor="assistant-prompt">What needs attention?</label>
       <textarea id="assistant-prompt" value={prompt} maxLength={2000} rows={5} disabled={state.kind === "loading"} onChange={(event) => setPrompt(event.target.value)} />
       <p className="assistant-disclosure">Sends your prompt, clip and asset names, timing and verification findings to {configuration?.provider ?? "the configured AI provider"}. Media files stay on this computer. The assistant cannot watch or listen to footage.</p>
       {configurationError !== null && <p role="status" className="assistant-error">{configurationError}</p>}
-      <div className="assistant-actions"><Button type="submit" disabled={!prompt.trim() || state.kind === "loading" || pendingMerge !== null}>{state.kind === "loading" ? "Reviewing issues…" : "Explain & propose fixes"}</Button>
+      {configuration !== null && !configuration.configured && <p role="status" className="assistant-error">The assistant needs server configuration. Contact the project owner.</p>}
+      <div className="assistant-actions"><Button type="submit" disabled={!prompt.trim() || state.kind === "loading" || pendingMerge !== null || configuration === null || !configuration.configured || (configuration.accessRequired && !accessCode.trim())}>{state.kind === "loading" ? "Reviewing issues…" : "Explain & propose fixes"}</Button>
         {state.kind === "loading" && <Button type="button" variant="outline" onClick={() => { controller.current?.abort(); setState({ kind: "idle" }); }}>Cancel</Button>}
       </div>
     </form>
