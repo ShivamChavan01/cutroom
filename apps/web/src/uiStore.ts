@@ -6,7 +6,7 @@ import { create } from "zustand";
  * is chrome, not timeline state, and it must never enter the op log.
  */
 
-export type RailItem = "media" | "versions" | "issues" | "settings";
+export type RailItem = "media" | "versions" | "issues" | "assistant" | "settings";
 export type EditorTab = "timeline" | "diff" | "merge" | "verification";
 export type BottomTab = "issues" | "activity";
 

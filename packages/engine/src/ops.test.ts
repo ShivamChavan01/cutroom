@@ -199,3 +199,12 @@ describe("ops", () => {
     ).toThrow(/unknown clip/);
   });
 });
+
+it.each([NaN, Infinity, -Infinity])("rejects non-finite timing %s without mutating the timeline", value => {
+  const base = applyOp(emptyTimeline(), { type: "addClip", clip: makeClip({ id: "finite", assetId: "media", trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1 }) });
+  const before = JSON.stringify(base);
+  expect(() => applyOp(base, { type: "moveClip", clipId: "finite", start: value })).toThrow();
+  expect(() => applyOp(base, { type: "splitClip", clipId: "finite", at: value })).toThrow();
+  expect(() => applyOp(base, { type: "trimClip", clipId: "finite", inPoint: value })).toThrow();
+  expect(JSON.stringify(base)).toBe(before);
+});

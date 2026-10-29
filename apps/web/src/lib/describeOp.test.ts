@@ -13,6 +13,7 @@ describe("describeOp", () => {
       }),
     ).toBe("added a on v1 at 2.0s");
 
+    expect(describeOp({ type: "detachAudio", clipId: "a", trackId: "a1" })).toBe("detached a audio to a1");
     expect(describeOp({ type: "deleteClip", clipId: "a" })).toBe("deleted a");
     expect(describeOp({ type: "splitClip", clipId: "a", at: 1_500 })).toBe(
       "split a at +1.5s",

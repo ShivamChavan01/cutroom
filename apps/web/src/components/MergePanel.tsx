@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import {
   type MergeResult,
   lintDelta,
+  conflictKey,
+  resolveMetadata,
   resolveField,
   resolveProject,
 } from "@cutroom/engine";
@@ -20,6 +22,17 @@ function ConflictRow({
   result: MergeResult;
   onResolve: (next: MergeResult) => void;
 }) {
+  if (conflict.kind === "assetField" || conflict.kind === "trackField" || conflict.kind === "assetPresence" || conflict.kind === "trackPresence" || conflict.kind === "trackOrder") {
+    const label = conflict.kind === "assetField" ? `Asset ${conflict.assetId}.${conflict.field}`
+      : conflict.kind === "trackField" ? `Track ${conflict.trackId}.${conflict.field}`
+      : conflict.kind === "assetPresence" ? `Asset ${conflict.assetId} deletion`
+      : conflict.kind === "trackPresence" ? `Track ${conflict.trackId} deletion` : "Track order";
+    return <li className="mb-2 text-[12px]">{label}: {JSON.stringify(conflict.ours) ?? "deleted"} / {JSON.stringify(conflict.theirs) ?? "deleted"}
+      <Button size="sm" onClick={() => { try { onResolve(resolveMetadata(result, conflict, "ours")); } catch (error) { window.alert(error instanceof Error ? error.message : "Resolution failed"); } }}>Keep ours</Button>
+      <Button size="sm" onClick={() => { try { onResolve(resolveMetadata(result, conflict, "theirs")); } catch (error) { window.alert(error instanceof Error ? error.message : "Resolution failed"); } }}>Take theirs</Button>
+      {(conflict.kind === "assetPresence" || conflict.kind === "trackPresence") && <Button size="sm" onClick={() => onResolve(resolveMetadata(result, conflict, "keep"))}>Keep metadata</Button>}
+    </li>;
+  }
   if (conflict.kind === "project") {
     return <li className="merge-project-conflict">Project {conflict.field}: {String(conflict.ours)} / {String(conflict.theirs)}<Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "ours"))}>Keep ours</Button><Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "theirs"))}>Take theirs</Button></li>;
   }
@@ -71,6 +84,7 @@ function ConflictRow({
       </li>
     );
   }
+  if (conflict.kind !== "overlap") { const exhaustive: never = conflict; return exhaustive; }
   return (
     <li className="mb-2 text-[12px]">
       <span className="text-destructive">[overlap]</span>{" "}
@@ -140,9 +154,9 @@ export function MergePanel() {
       </header>
       {!pending.result.clean && (
         <ul className="m-0 mb-3 list-none p-0">
-          {pending.result.conflicts.map((conflict, index) => (
+          {pending.result.conflicts.map((conflict) => (
             <ConflictRow
-              key={index}
+              key={conflictKey(conflict)}
               conflict={conflict}
               result={pending.result}
               onResolve={store.setResult}
@@ -166,9 +180,13 @@ export function MergePanel() {
             (introduces && !confirmed)
           }
           onClick={() => {
-            store.commitMerge(message.trim());
-            setMessage("");
-            setConfirmed(false);
+            try {
+              store.commitMerge(message.trim());
+              setMessage("");
+              setConfirmed(false);
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : "Merge commit failed");
+            }
           }}
         >
           Commit merge

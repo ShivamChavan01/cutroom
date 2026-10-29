@@ -5,9 +5,12 @@ import {
   type Timeline,
   diffTimelines,
   mergeTimelines,
+  refreshMergeConflicts,
+  isUnchanged,
 } from "@cutroom/engine";
 import {
   type Repo,
+  currentCommit,
   checkout,
   commit as commitToRepo,
   createBranch,
@@ -21,6 +24,9 @@ import { useEditorStore } from "./store";
 export interface PendingMerge {
   readonly sourceBranch: string;
   readonly baseId: string;
+  readonly workingTimeline: Timeline;
+  readonly oursId: string;
+  readonly theirsId: string;
   result: MergeResult;
 }
 
@@ -71,17 +77,11 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
   },
 
   commitCurrent: (message) => {
-    const { repo } = get();
-    if (repo === null) return;
+    const { repo, pending } = get();
+    if (repo === null) throw new Error("Initialize version control before committing.");
+    if (pending !== null) throw new Error("Finish or cancel the merge before committing.");
     const editor = useEditorStore.getState();
-    try {
-      set({
-        repo: commitToRepo(repo, editor.timeline, message, editor.authorId),
-      });
-    } catch {
-      // Detached HEAD: committing is blocked (git behaves the same way —
-      // you must pick a branch or name a new one first).
-    }
+    set({ repo: commitToRepo(repo, editor.timeline, message, editor.authorId) });
   },
 
   createBranch: (name) => {
@@ -93,12 +93,16 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
   forkBranch: (name) => {
     const { repo } = get();
     if (repo === null) return;
+    if (get().pending !== null) throw new Error("Finish or cancel the merge before creating a version.");
     set({ repo: checkout(createBranch(repo, name), name), pending: null, diffOverlay: null });
   },
 
   checkoutBranch: (name) => {
     const { repo } = get();
     if (repo === null) return;
+    if (get().pending !== null) throw new Error("Finish or cancel the merge before checkout.");
+    if (repo.detachedAt === null && repo.currentBranch === name) return;
+    requireCleanWorkingTree(repo);
     const next = checkout(repo, name);
     set({ repo: next, pending: null, diffOverlay: null });
     useEditorStore.getState().loadTimeline(head(next).timeline);
@@ -107,6 +111,8 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
   viewCommit: (commitId) => {
     const { repo } = get();
     if (repo === null) return;
+    if (get().pending !== null) throw new Error("Finish or cancel the merge before viewing a commit.");
+    requireCleanWorkingTree(repo);
     const next = viewCommitRepo(repo, commitId);
     set({ repo: next, pending: null, diffOverlay: null });
     // Load the snapshot so the old version is actually watchable.
@@ -119,7 +125,8 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
   beginMerge: (sourceBranch) => {
     const { repo } = get();
     if (repo === null || sourceBranch === repo.currentBranch) return;
-    if (repo.detachedAt !== null) return; // merge from a branch, not a commit
+    if (repo.detachedAt !== null) throw new Error("Check out a branch before merging.");
+    if (get().pending !== null) throw new Error("Finish or cancel the current merge first.");
     const editor = useEditorStore.getState();
     const ours = head(repo);
     const theirs = head(repo, sourceBranch);
@@ -132,6 +139,9 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
       pending: {
         sourceBranch,
         baseId: base.id,
+        workingTimeline: editor.timeline,
+        oursId: ours.id,
+        theirsId: theirs.id,
         result: mergeTimelines(base.timeline, editor.timeline, theirs.timeline),
       },
     });
@@ -161,13 +171,21 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
 
   commitMerge: (message) => {
     const { repo, pending } = get();
-    if (repo === null || pending === null || !pending.result.clean) return;
+    if (repo === null || pending === null) throw new Error("No merge is in progress.");
+    const result = refreshMergeConflicts(pending.result);
+    if (!result.clean) throw new Error("Resolve all conflicts before committing the merge.");
     const editor = useEditorStore.getState();
-    const merged = commitToRepo(repo, pending.result.merged, message, editor.authorId, [
-      head(repo).id,
-      head(repo, pending.sourceBranch).id,
-    ]);
+    if (!isUnchanged(pending.workingTimeline, editor.timeline) || head(repo).id !== pending.oursId || head(repo, pending.sourceBranch).id !== pending.theirsId) {
+      throw new Error("The working timeline or branch heads changed. Cancel and restart the merge to include your edits.");
+    }
+    const merged = commitToRepo(repo, result.merged, message, editor.authorId, [pending.oursId, pending.theirsId]);
     set({ repo: merged, pending: null, diffOverlay: null });
     editor.loadTimeline(pending.result.merged);
   },
 }));
+
+function requireCleanWorkingTree(repo: Repo): void {
+  if (!isUnchanged(currentCommit(repo).timeline, useEditorStore.getState().timeline)) {
+    throw new Error("You have uncommitted changes. Commit them or create a new version before checkout.");
+  }
+}

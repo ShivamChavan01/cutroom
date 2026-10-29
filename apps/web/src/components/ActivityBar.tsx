@@ -1,4 +1,4 @@
-import { AlertTriangle, Film, GitBranch, Settings } from "lucide-react";
+import { AlertTriangle, Film, GitBranch, MessageSquare, Settings } from "lucide-react";
 import { ExportMenu } from "./ExportMenu";
 import { lint } from "@cutroom/engine";
 import { useEditorStore } from "../store";
@@ -9,6 +9,7 @@ const ITEMS: { id: RailItem; label: string; icon: typeof Film }[] = [
   { id: "media", label: "Media", icon: Film },
   { id: "versions", label: "Versions", icon: GitBranch },
   { id: "issues", label: "Issues", icon: AlertTriangle },
+  { id: "assistant", label: "Assistant", icon: MessageSquare },
 ];
 
 /**

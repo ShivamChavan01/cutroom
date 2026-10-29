@@ -1,5 +1,5 @@
 import { type Timeline } from "./model";
-import { type Op, type OpEnvelope, applyOps } from "./ops";
+import { type Op, type OpEnvelope, applyOps, detachedAudioId } from "./ops";
 
 /**
  * History is an append-only op log plus a cursor, not a stack of snapshots.
@@ -69,13 +69,19 @@ export function redo(history: History): History {
  *
  * Deriving it means blame is always consistent with what was actually applied:
  * there is no second bookkeeping path that can fall out of date.
+ * Callers with an already-derived snapshot can avoid replay by supplying it.
+ * That snapshot must correspond to this history's base, log and cursor.
  */
-export function authorsByClip(history: History): Map<string, string> {
+export function authorsByClip(history: History, timeline: Timeline = current(history)): Map<string, string> {
   const authors = new Map<string, string>();
   for (const { op, author } of history.log.slice(0, history.cursor)) {
     switch (op.type) {
       case "addClip":
         authors.set(op.clip.id, author);
+        break;
+      case "detachAudio":
+        authors.set(op.clipId, author);
+        authors.set(detachedAudioId(op.clipId), author);
         break;
       case "splitClip": {
         // Both halves are attributable to whoever performed the split.
@@ -110,7 +116,7 @@ export function authorsByClip(history: History): Map<string, string> {
     return splitAuthors.has(parentId) ? splitAuthors.get(parentId) : resolve(parentId);
   };
   const out = new Map<string, string>();
-  for (const id of Object.keys(current(history).clips)) {
+  for (const id of Object.keys(timeline.clips)) {
     const author = resolve(id);
     if (author !== undefined) out.set(id, author);
   }

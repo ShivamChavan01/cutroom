@@ -202,3 +202,34 @@ describe("buildCommitGraph", () => {
     }
   });
 });
+
+it("orders concurrent tips newest first without letting clock skew put a parent above its child", () => {
+  const root = baseRepo().commits.c0!;
+  const commits = {
+    c0: { ...root, at: 900 },
+    c1: { ...root, id: "c1", parents: ["c0"], at: 100 },
+    c2: { ...root, id: "c2", parents: ["c0"], at: 200 },
+    c3: { ...root, id: "c3", parents: ["c1", "c2"], at: 50 },
+    c4: { ...root, id: "c4", parents: ["c0"], at: 300 },
+  };
+  expect(orderCommits(commits).map((item) => item.id)).toEqual(["c4", "c3", "c2", "c1", "c0"]);
+  expect(orderCommits(Object.fromEntries(Object.entries(commits).reverse()))).toEqual(orderCommits(commits));
+});
+
+it("handles empty and pruned histories and rejects cycles rather than hanging", () => {
+  expect(orderCommits({})).toEqual([]);
+  const root = baseRepo().commits.c0!;
+  const repo = { ...baseRepo(), commits: { c0: { ...root, parents: ["missing"] } } };
+  expect(buildCommitGraph(repo).nodes).toHaveLength(1);
+  expect(buildCommitGraph(repo).edges).toEqual([]);
+  expect(() => orderCommits({ c0: { ...root, parents: ["c0"] } })).toThrow("cycle");
+});
+
+it("lays out a long history without recursive traversal", () => {
+  const root = baseRepo().commits.c0!;
+  const commits = Object.fromEntries(Array.from({ length: 12000 }, (_, index) => {
+    const id = `c${index}`;
+    return [id, { ...root, id, parents: index === 0 ? [] : [`c${index - 1}`] }];
+  }));
+  expect(orderCommits(commits)).toHaveLength(12000);
+});

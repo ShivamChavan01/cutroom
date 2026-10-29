@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
+import { emptyTimeline, makeClip, putAsset, record, splitChildId } from "@cutroom/engine";
 import { useEditorStore } from "../store";
 import { Inspector } from "./Inspector";
 
@@ -57,6 +57,25 @@ describe("clip inspector", () => {
     expect(html).toContain("0:03.50");
     expect(html).toContain("75%");
     expect(html).toContain(useEditorStore.getState().authorId);
+  });
+
+  it("keeps selected split authorship correct through undo, redo and checkout", () => {
+    seedClip();
+    const store = useEditorStore.getState();
+    const beforeSplit = store.timeline;
+    const history = record(store.history, { type: "splitClip", clipId: "clip-1", at: 1_000 }, "Split reviewer");
+    store.restoreHistory(history);
+    store.selectClip(splitChildId("clip-1", 1_000, "L"));
+    expect(renderToStaticMarkup(<Inspector />)).toContain("Split reviewer");
+    store.undo();
+    expect(renderToStaticMarkup(<Inspector />)).toContain("No clip selected");
+    store.redo();
+    expect(renderToStaticMarkup(<Inspector />)).toContain("Split reviewer");
+    store.loadTimeline(beforeSplit);
+    store.selectClip("clip-1");
+    const checkedOut = renderToStaticMarkup(<Inspector />);
+    expect(checkedOut).toContain("Clip timing");
+    expect(checkedOut).not.toContain("Split reviewer");
   });
 
   it.each([0, 1_000, 4_000, 5_000])("disables split outside the clip interior at %s", (at) => {

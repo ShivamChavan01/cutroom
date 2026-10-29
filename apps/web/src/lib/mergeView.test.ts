@@ -73,7 +73,7 @@ describe("mergeView mapping", () => {
     const bands = visuals.bandsByTrack.get("v1") ?? [];
     expect(bands).toHaveLength(1);
     expect(bands[0]).toMatchObject({
-      key: "0:overlap:a",
+      key: JSON.stringify(["overlap", "v1", "a", "b"]),
       index: 0,
       trackId: "v1",
       start: 1_000,
@@ -99,7 +99,7 @@ describe("mergeView mapping", () => {
     const bands = visuals.bandsByTrack.get("v1") ?? [];
     expect(bands).toHaveLength(1);
     expect(bands[0]).toMatchObject({
-      key: "0:field:a",
+      key: JSON.stringify(["field", "a", "volume"]),
       trackId: "v1",
       start: 0,
       end: 2_000,
@@ -118,7 +118,7 @@ describe("mergeView mapping", () => {
     const bands = visuals.bandsByTrack.get("v1") ?? [];
     expect(bands).toHaveLength(1);
     expect(bands[0]).toMatchObject({
-      key: "0:deleteModify:a",
+      key: JSON.stringify(["deleteModify", "a"]),
       trackId: "v1",
       start: 0,
       end: 2_000,
@@ -214,7 +214,7 @@ describe("mergeView mapping", () => {
 
     const bands = visuals.bandsByTrack.get("v1") ?? [];
     expect(bands).toHaveLength(2);
-    expect(bands.map((band) => band.key)).toEqual(["0:field:a", "1:overlap:a"]);
+    expect(bands.map((band) => band.key)).toEqual([JSON.stringify(["field", "a", "volume"]), JSON.stringify(["overlap", "v1", "a", "b"])]);
     expect(bands[1]).toMatchObject({ label: "[overlap] a × b", start: 1_000, end: 2_000 });
 
     // Ours keeps clip a, so only theirs' moved clip b renders as a ghost.

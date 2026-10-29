@@ -158,7 +158,7 @@ side is the whole system today — one browser, one project, no sharing.
   tracks), `cutroom.ts` (lossless native JSON, versioned, with an
   importer), and `index.ts` — the `EXPORT_FORMATS` registry the UI
   renders. Adding a format = one serializer + one registry entry.
-- 136 engine tests green (including 35 editorial feature regressions),
+- 137 engine tests green (including 35 editorial feature regressions),
   `tsc --noEmit` clean
 - Tests cover: split determinism across branches, clean merge, field
   conflict, the overlap case a naive merge misses, no auto-shift,
@@ -245,16 +245,62 @@ side is the whole system today — one browser, one project, no sharing.
   the merge is committed, with an explicit "commit it anyway" confirmation
   when it introduces problems — it warns, it does not block), and the
   commit panel (delta against the parent commit).
-- UI language: charcoal/olive surfaces, pale chartreuse accent, monospace
-  transcript and timecode, keyboard-first.
+- UI language: neutral dark surfaces, blue action accent, compact editorial
+  layout, monospace transcript and timecode, keyboard-first.
   Demo seeders and the placeholder "agent" panel were removed as fake UI —
   nothing in the product is a mock.
 - Perf harness pages: `perf.html` (engine ops in a browser JS runtime only)
   and `headed.html` (real Timeline + Player: 30-click scrub sweep on the real
   lane, boundary-stall capture, `?clip=long` memory run with heap before/after).
   Engine bench medians in PERF.md; every player number pending headed runs
-- 255 web tests green; engine/web `tsc` clean, `vite build` succeeds.
-  Total 391 tests in 46 files across the workspace.
+- **Audio waveforms, 2026-10-26:** actual browser-decoded audio beneath video
+  thumbnails and on audio clips. Offline decoding at 8 kHz, one source at a
+  time; shared cache of up to 64 completed/failed entries, mounted clips
+  retain ready data across eviction. Source-normalized peaks aggregate
+  channels without phase cancellation. Gain affects drawing; mute dims it.
+  Trim, split and viewport offsets select the corresponding source range;
+  SVG work is capped at 2,000 bars per visible clip region. Limits: 128 MB,
+  20 minutes per source; unavailable/unsupported audio is labeled rather
+  than fabricated. Waveforms alone add no duplicate A1 clip or level meter;
+  the separate Detach audio action below creates an editable audio clip.
+  Browser QA with both user AAC MP4s and a silence/tone/silence WAV passed
+  drawing, offsets, active playback, mute and regeneration after reload.
+  `scripts/verify-waveforms.mjs`; evidence in `.gstack/waveform-qa/`.
+- **Branch graph polish, 2026-10-26:** ancestry-safe, newest-available-tip
+  ordering without recursive traversal; shared branch tips, merge markers,
+  author metadata and explicit viewed HEAD. Long merge edges bend beside
+  the actual merge commit rather than an intermediate row. Snapshot checkout
+  confirms before leaving uncommitted edits. Chrome QA covers real footage,
+  divergent trims, conflict resolution, two-parent merge, snapshot checkout,
+  accept/cancel of the dirty guard and long branch labels at laptop width.
+  Reproduce with `scripts/verify-commit-graph.mjs` using `TEST_VIDEO_A` and
+  `PLAYWRIGHT_MODULE` as in the other browser checks; local evidence in
+  `.gstack/graph-qa/`. Layout tests include clock skew, pruned history,
+  cyclic-history rejection and 12,000 commits (not a browser performance claim).
+- **Detach audio, 2026-10-26:** a single engine op creates an independent
+  audio clip referencing the existing video asset, preserves source range,
+  timeline placement and gain, and sets the video's gain to zero. Reuses an
+  unlocked audio track without an overlapping clip; otherwise creates one.
+  Undo/redo restores both in one step, including any newly created track.
+  Stable audio identity stays independent of video deletion and supports
+  version diffs and convergent same-operation branch merges. Source and
+  destination locks are enforced by the store. Existing project persistence
+  replays the op; neither an extracted audio file nor ongoing edit linking
+  is implemented. Chrome checks with both AAC MP4s cover real A1 waveforms,
+  native audio/video playback with one audible source, timing, independent
+  audio trim, undo/redo and reload playback. Reproduce with
+  `scripts/verify-detach-audio.mjs` and `TEST_VIDEO_A`/`PLAYWRIGHT_MODULE`;
+  evidence in `.gstack/detach-audio-qa/`.
+  This QA also reproduced the large-source reload buffering bug: the RAF
+  clock previously ran to the end while native media were still seeking.
+  It now holds during active media buffering/seeking and updates the frame
+  timestamp so playback resumes without accumulating that wall time. Gaps
+  and image-only layers retain their existing timeline-clock behavior.
+- Day 1 revalidation: 181 engine tests and 452 web/server tests pass;
+  engine/web `tsc` and production `vite build` pass. See `DAY1-REPORT.md`
+  for the starting dirty state, reproduced defects, exact commands and
+  real Chrome persistence/merge checks. Earlier checkpoint counts above
+  describe their original checkpoints, rather than the current total.
 - **Untested by unit tests (browser-only):** the OPFS calls themselves
   (getDirectory, createWritable, readMediaUrl). jsdom does not implement
   OPFS and `fake-indexeddb` only covers IndexedDB, so those paths are
@@ -359,7 +405,8 @@ side is the whole system today — one browser, one project, no sharing.
   Native JSON preserves all fields; OTIO stores transforms as Cutroom
   metadata. EDL/FCPXML omit visual transforms. Preview uses native media
   layers and CSS, with later video tracks above earlier ones; exports are
-  timeline files, never an encoded video. No transitions or waveforms added.
+  timeline files, never an encoded video. That checkpoint added no transitions
+  or waveforms; real waveforms were added on 2026-10-26.
   `scripts/verify-editorial.mjs` passed search/tags, transforms/volume,
   hide/mute/lock, trim/drag/zoom, graphics, fullscreen, settings, version
   creation, native download and refresh recovery with actual demo media.
@@ -383,8 +430,8 @@ side is the whole system today — one browser, one project, no sharing.
   blank them. Decoder probes clean up after success, failure, abort and a
   10-second timeout. Timeline clips reuse ready posters without starting
   additional decoders. Strips repeat one representative source frame,
-  not frame-by-frame thumbnails. No waveform analysis or fake waveforms
-  were added. Inspector groups actual timing, source and audio values;
+  not frame-by-frame thumbnails. That redesign added no waveform analysis;
+  real waveforms were added on 2026-10-26. Inspector groups actual timing, source and audio values;
   split availability updates with the playhead. Screenshots with four
   real Sintel trailer excerpts are in `.gstack/studio-final/`; these are
   isolated QA fixtures, not seeded product state. Functional workflow and
@@ -532,10 +579,27 @@ side is the whole system today — one browser, one project, no sharing.
       DONE (`5f20deb`)
 - [x] Persistence of media in OPFS, quota-checked, with reference-counted
       deletion — DONE (`7f32c02`)
-- [ ] AI layer (deferred, needs an API key): narration of `diff()` output and
-      merge conflicts into plain English; lint fix suggestions. Engine stays
-      the source of truth — the model narrates or proposes ops, never mutates
-      the timeline directly
+- [x] Groq/OpenAI verification assistant: explains lint findings and proposes
+      typed edits, with clip diff and lint delta before applying. Server-only
+      key via `apps/web/.env.local`: `AI_PROVIDER=groq`, `GROQ_API_KEY`,
+      `GROQ_MODEL` (default `openai/gpt-oss-120b`), or `AI_PROVIDER=openai`
+      with `OPENAI_API_KEY` and `OPENAI_MODEL`. Groq Chat Completions uses
+      strict schema output, normalized to engine optionals; OpenAI uses the
+      Responses API. No media upload. Both Vite dev and local preview serve
+      the endpoint. Local-only, origin checked, one concurrent call, bounded
+      payloads and 60-second upstream timeout. Atomic apply checks snapshot
+      identity and current locks; normal per-op undo/redo and persistence.
+      Merge must be finished/cancelled first. Model output is parsed and
+      reduced through the existing engine; no direct timeline mutation.
+      Limits: 50 ops, 1,000 clips / 250,000 context characters. Controlled
+      provider tests and eight real-video browser checkpoints pass. Local
+      Groq is configured in an ignored owner-readable env file. Three live
+      GPT-OSS 120B smoke cases pass: gap fix (including preview, apply,
+      undo/redo/reload), locked-track explanation, explanation-only. This
+      is not a broad quality evaluation; live OpenAI remains unverified.
+      The panel fetches provider identity without exposing credentials.
+      Diff narration,
+      merge-conflict explanations and media understanding remain deferred.
 - [x] OTIO (`.otio`) export: the workflow-interchange bridge so a merged
       timeline can be finished in Premiere/Resolve. Serialiser + round-trip
       tests, no new UI
@@ -565,6 +629,30 @@ side is the whole system today — one browser, one project, no sharing.
   that video was recorded is not verifiable from this repo**; treat its
   status as unknown rather than done. The follow-up this repo is meant to
   support would show the workflow layer: branch, merge, resolve, verify.
+
+## Editor optimization loop, 2026-10-25
+
+- The web editor indexes ordered clips and duration once per immutable
+  `timeline.clips` record. Playback, selectors, media callbacks and the
+  animation loop reuse it. Engine ordering and overlap semantics stay the same.
+- Horizontal timeline rendering uses the visible time range plus overscan.
+  Selected, keyboard-focused and pointer-captured clips stay mounted.
+  Focused merge controls also remain mounted until focus leaves their band.
+- Dispatch applies the new operation to the current snapshot with the same
+  engine reducer. Undo, redo, restore and asset-base changes retain replay.
+  Timeline and Inspector pass their current snapshot to `authorsByClip`.
+- Media recovery uses four concurrent OPFS reads and one immutable URL-map
+  publication. Cancellation releases only unpublished URLs. Failed reads
+  preserve successful recovery and the missing-file warning.
+- `scripts/measure-editor-performance.mjs` compares frozen Git source with
+  the worktree. It checks outputs independently and reports warm lookups,
+  cold revision construction and dispatch separately. See `PERF.md` for
+  measured results and scope limits. Native decoding FPS is not inferred
+  from helper timings or two-frame browser checks.
+- Final regression command: `./node_modules/.bin/vitest run packages/engine
+  apps/web scripts/measure-editor-performance.test.mjs`. Real Chrome checks
+  also cover native video handoff, refresh recovery, editor controls,
+  merge resolution, keyboard focus and saved operations after scrolling.
 
 ## Persistence limits (what "it saves" does and does not mean)
 
@@ -599,7 +687,7 @@ side is the whole system today — one browser, one project, no sharing.
 
 ## Environment
 
-- Node v26, pnpm 11. `pnpm install` wrapper currently trips on esbuild
+- Verified environment: Node v24.17.0, pnpm 11. `pnpm install` wrapper currently trips on esbuild
   build-approval (`ERR_PNPM_IGNORED_BUILDS`); run binaries directly from
   `node_modules/.bin/` (vitest, tsc) until fixed.
 - `/mnt/nvme0n1p10/cardboard` also contains unrelated files NOT part of

@@ -1,4 +1,5 @@
-import { clipsOnTrack, type Clip, type Timeline, type Track } from "@cutroom/engine";
+import { type Clip, type Timeline, type Track } from "@cutroom/engine";
+import { indexedClipsOnTrack } from "./clipIndex";
 
 /**
  * Playback resolution: which clip owns the playhead, and where inside its
@@ -55,7 +56,7 @@ export function resolvePlaybackLayers(
   const layers: PlaybackLayer[] = [];
   for (const track of timeline.tracks) {
     if (hiddenTrackIds.includes(track.id)) continue;
-    const active = resolveActiveClip(clipsOnTrack(timeline, track.id), playheadMs);
+    const active = resolveActiveClip(indexedClipsOnTrack(timeline, track.id), playheadMs);
     if (active !== null) layers.push({ ...active, track });
   }
   return layers;
@@ -72,14 +73,15 @@ export function clipTransform(clip: Clip): string {
 }
 
 export function advancePlayback({
-  at, previousFrame, frame, duration,
+  at, previousFrame, frame, duration, buffering = false,
 }: {
   readonly at: number;
   readonly previousFrame: number | null;
   readonly frame: number;
   readonly duration: number;
+  readonly buffering?: boolean;
 }): { readonly time: number; readonly ended: boolean } {
-  const elapsed = previousFrame === null ? 0 : Math.max(0, frame - previousFrame);
+  const elapsed = buffering || previousFrame === null ? 0 : Math.max(0, frame - previousFrame);
   const time = Math.min(duration, at + elapsed);
   return { time, ended: time >= duration };
 }

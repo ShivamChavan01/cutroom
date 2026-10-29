@@ -1,18 +1,13 @@
 import { GitBranch, Plus } from "lucide-react";
-import { diffTimelines } from "@cutroom/engine";
-import { currentCommit } from "../lib/vcs";
 import { useVcsStore } from "../vcsStore";
-import { useEditorStore } from "../store";
 
 export function VersionRail() {
   const repo = useVcsStore((state) => state.repo);
-  const timeline = useEditorStore((state) => state.timeline);
   if (repo === null) return <aside className="version-rail" aria-label="Timeline versions" />;
   const choose = (name: string) => {
     if (name === repo.currentBranch && repo.detachedAt === null) return;
-    const diff = diffTimelines(currentCommit(repo).timeline, timeline);
-    if ((diff.changes.length + (diff.metadataChanges?.length ?? 0)) > 0 && !window.confirm("Switch versions and discard uncommitted edits? Commit or create a new version to preserve them.")) return;
-    useVcsStore.getState().checkoutBranch(name);
+    try { useVcsStore.getState().checkoutBranch(name); }
+    catch (reason) { window.alert(reason instanceof Error ? reason.message : "Could not switch versions."); }
   };
   return <aside className="version-rail" aria-label="Timeline versions">
     <h2>Versions</h2>

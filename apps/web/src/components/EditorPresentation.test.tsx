@@ -25,7 +25,7 @@ vi.mock("../uiStore", async (importOriginal) => {
     useUiStore: Object.assign(
       <T,>(selector: (state: ReturnType<typeof actual.useUiStore.getState>) => T) =>
         selector(actual.useUiStore.getState()),
-      { setState: actual.useUiStore.setState },
+      { setState: actual.useUiStore.setState, getState: actual.useUiStore.getState },
     ),
   };
 });
@@ -36,6 +36,13 @@ describe("editor presentation", () => {
   beforeEach(() => {
     useEditorStore.getState().loadTimeline(emptyTimeline("presentation-test"));
     useUiStore.setState({ rail: "media" });
+  });
+
+  it("opens the verification assistant from its workspace rail item", () => {
+    useUiStore.setState({ rail: "assistant" });
+    const html = renderToStaticMarkup(<SidePanel />);
+    expect(html).toContain('aria-label="AI verification assistant"');
+    expect(html).not.toContain("Project media");
   });
 
   it("offers an import action in an empty media library", () => {

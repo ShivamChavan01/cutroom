@@ -7,6 +7,7 @@ import {
   TRANSFORM_FIELDS,
   clipIsWellFormed,
   outPointOf,
+  overlaps,
 } from "./model";
 
 /**
@@ -19,6 +20,7 @@ import {
 
 export type Op =
   | { readonly type: "addClip"; readonly clip: Clip }
+  | { readonly type: "detachAudio"; readonly clipId: string; readonly trackId: string }
   | { readonly type: "deleteClip"; readonly clipId: string }
   | { readonly type: "splitClip"; readonly clipId: string; readonly at: Millis }
   | {
@@ -82,6 +84,11 @@ export function splitChildId(
   return `${parentId}~${ms}~${side}~${fnv1a(`${parentId}:${ms}:${side}`)}`;
 }
 
+/** Separate identity keeps video deletion from deleting independent audio. */
+export function detachedAudioId(clipId: string): string {
+  return `audio:${clipId}`;
+}
+
 function mustClip(timeline: Timeline, clipId: string): Clip {
   const clip = timeline.clips[clipId];
   if (clip === undefined) {
@@ -125,6 +132,38 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
       return writeClip(timeline, op.clip);
     }
 
+    case "detachAudio": {
+      const source = mustClip(timeline, op.clipId);
+      if (timeline.assets[source.assetId]?.kind !== "video" ||
+          timeline.tracks.find((track) => track.id === source.trackId)?.kind !== "video") {
+        throw new Error("Detach audio requires a video clip on a video track.");
+      }
+      const id = detachedAudioId(source.id);
+      if (Object.keys(timeline.clips).some((key) => key === id || key.startsWith(`${id}~`))) {
+        throw new Error("Audio has already been detached from this clip.");
+      }
+      if (typeof op.trackId !== "string" || op.trackId.trim().length === 0) {
+        throw new Error("Detach audio requires an audio track id.");
+      }
+      const target = timeline.tracks.find((track) => track.id === op.trackId);
+      if (target !== undefined && target.kind !== "audio") {
+        throw new Error("Detach audio destination must be an audio track.");
+      }
+      const audio: Clip = {
+        id, trackId: op.trackId, assetId: source.assetId,
+        start: source.start, inPoint: source.inPoint, duration: source.duration,
+        outPoint: source.outPoint, volume: source.volume,
+      };
+      if (Object.values(timeline.clips).some((clip) => clip.trackId === op.trackId && overlaps(clip, audio))) {
+        throw new Error("Detach audio destination is occupied at this time.");
+      }
+      const withTrack = target === undefined
+        ? applyOp(timeline, { type: "addTrack", track: { id: op.trackId, name: op.trackId.toUpperCase(), kind: "audio", muted: false } })
+        : timeline;
+      const withAudio = writeClip(withTrack, audio);
+      return writeClip(withAudio, { ...source, volume: 0 });
+    }
+
     case "deleteClip": {
       const clip = timeline.clips[op.clipId];
       const next = { ...timeline.clips };
@@ -162,7 +201,7 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
       const clip = mustClip(timeline, op.clipId);
       // A split at either extreme produces a zero-length clip, which is not a
       // clip. Reject instead of creating an invisible one.
-      if (at <= 0 || at >= clip.duration) {
+      if (!Number.isFinite(at) || at <= 0 || at >= clip.duration) {
         throw new Error(
           `applyOp: split point ${at} outside clip ${clip.id} of duration ${clip.duration}`,
         );

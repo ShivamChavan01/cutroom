@@ -42,7 +42,7 @@ export function Inspector() {
   const setTab = useUiStore((state) => state.setInspectorTab);
   const [linked, setLinked] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const authors = useMemo(() => authorsByClip(history), [history]);
+  const authors = useMemo(() => authorsByClip(history, timeline), [history, timeline]);
   const author = clip === undefined ? undefined : authors.get(clip.id);
   const issues = useMemo(() => selection === null ? [] : lint(timeline).filter((issue) => issue.clipIds.includes(selection)), [timeline, selection]);
   const edit = (field: ClipProperty, value: number) => {

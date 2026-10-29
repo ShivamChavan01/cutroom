@@ -11,6 +11,7 @@ import {
   makeClip,
   record,
   redo,
+  splitChildId,
   undo,
 } from "./index";
 import { baseTimeline } from "./fixtures.js";
@@ -78,6 +79,33 @@ describe("history", () => {
     let h = createHistory(baseTimeline());
     h = record(h, { type: "deleteClip", clipId: "c1" }, "alice");
     expect(authorsByClip(h).has("c1")).toBe(false);
+  });
+
+  it("uses an already-derived snapshot with the same split, deletion and cursor authorship", () => {
+    let h = createHistory(baseTimeline());
+    const root = h;
+    h = record(h, { type: "setVolume", clipId: "c1", volume: 0.5 }, "alice");
+    const edited = h;
+    h = record(h, { type: "splitClip", clipId: "c1", at: 4_000 }, "bob");
+    const split = h;
+    const left = splitChildId("c1", 4_000, "L");
+    const right = splitChildId("c1", 4_000, "R");
+    h = record(h, { type: "splitClip", clipId: left, at: 2_000 }, "charlie");
+    const nested = h;
+    const nestedLeft = splitChildId(left, 2_000, "L");
+    const nestedRight = splitChildId(left, 2_000, "R");
+    const descendants = authorsByClip(nested, current(nested));
+    expect(descendants.get(nestedLeft)).toBe("charlie");
+    expect(descendants.get(nestedRight)).toBe("charlie");
+    expect(descendants.get(right)).toBe("bob");
+    h = record(h, { type: "deleteClip", clipId: left }, "dave");
+    const deleted = authorsByClip(h, current(h));
+    expect([...deleted.keys()]).toEqual([right]);
+    expect(deleted.get(right)).toBe("bob");
+    for (const history of [root, edited, split, nested, h, undo(h), redo(undo(h))]) {
+      expect(authorsByClip(history, current(history))).toEqual(authorsByClip(history));
+    }
+    expect(authorsByClip(root, current(root)).size).toBe(0);
   });
 });
 

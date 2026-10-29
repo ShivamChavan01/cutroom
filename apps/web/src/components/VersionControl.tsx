@@ -187,15 +187,8 @@ export function VersionControl() {
 
   const checkoutGuarded = (name: string) => {
     if (name === repo.currentBranch) return;
-    if (
-      dirty > 0 &&
-      !window.confirm(
-        `${dirty} uncommitted change(s) will be left behind (not lost — they stay out of every branch until committed, and switching back won't restore them). Switch anyway?`,
-      )
-    ) {
-      return;
-    }
-    store.checkoutBranch(name);
+    try { store.checkoutBranch(name); }
+    catch (error) { window.alert(error instanceof Error ? error.message : "Checkout failed"); }
   };
 
   return (
@@ -208,7 +201,7 @@ export function VersionControl() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => store.checkoutBranch(repo.currentBranch)}
+              onClick={() => { try { store.checkoutBranch(repo.currentBranch); } catch (error) { window.alert(error instanceof Error ? error.message : "Checkout failed"); } }}
             >
               back to {repo.currentBranch}
             </Button>
@@ -272,8 +265,12 @@ export function VersionControl() {
                 : undefined
             }
             onClick={() => {
-              store.commitCurrent(message.trim());
-              setMessage("");
+              try {
+                store.commitCurrent(message.trim());
+                setMessage("");
+              } catch (error) {
+                window.alert(error instanceof Error ? error.message : "Commit failed");
+              }
             }}
           >
             Commit
@@ -317,7 +314,7 @@ export function VersionControl() {
             return (
               <li key={commit.id}>
                 <button
-                  onClick={() => store.viewCommit(commit.id)}
+                  onClick={() => { try { store.viewCommit(commit.id); } catch (error) { window.alert(error instanceof Error ? error.message : "Checkout failed"); } }}
                   title={`Check out ${commit.id} and view its timeline`}
                   className={`vcs-commit${viewing ? " vcs-commit-viewing" : ""}`}
                 >

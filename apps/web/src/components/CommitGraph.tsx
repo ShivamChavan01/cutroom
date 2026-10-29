@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { type Commit } from "../lib/vcs";
 import { buildCommitGraph } from "../lib/commitGraph";
 import { useVcsStore } from "../vcsStore";
 import { useEditorStore } from "../store";
 
-const ROW_HEIGHT = 46;
+const ROW_HEIGHT = 88;
 const LANE_WIDTH = 22;
 const NODE_RADIUS = 5;
 
@@ -21,8 +21,8 @@ const LANE_COLORS = ["#7fa2ff", "#b194f4", "#edb271", "#6bc8ad", "#ee9cbe", "#73
  */
 export function CommitGraph() {
   const repo = useVcsStore((state) => state.repo);
-  const store = useVcsStore.getState();
-  const setPlayhead = useEditorStore((state) => state.setPlayhead);
+  const [error, setError] = useState<string | null>(null);
+
 
   const graph = useMemo(() => (repo === null ? null : buildCommitGraph(repo)), [repo]);
 
@@ -61,15 +61,26 @@ export function CommitGraph() {
 
   return (
     <div className="commit-graph" aria-label="Commit graph">
-      <p className="mb-3 text-[11px] text-faint">
-        Main stays on the left. Branches fork to the right and join at merge
-        commits. Labels mark branch tips; branches sharing a commit share a dot.
+      <header className="commit-graph-heading">
+        <strong>All branches</strong>
+        <span>{graph.branchTips.length} branches · {graph.nodes.length} commits</span>
+      </header>
+      <p className="commit-graph-help">
+        Main stays on the left. Follow each line to its shared ancestor; two parent lines mark a merge.
       </p>
+      <div className="commit-graph-branches" aria-label="Branch tips">
+        {graph.branchTips.map(({ branch, commitId }) => (
+          <span key={branch} className="commit-graph-ref" style={{ color: branchColor(branch) }}>
+            {branch}<code>{commitId}</code>
+          </span>
+        ))}
+      </div>
+      {error !== null && <p role="alert" className="text-destructive text-[12px]">{error}</p>}
       <div className="relative" style={{ height }}>
         <svg
           width={graphWidth}
           height={height}
-          className="absolute left-0 top-0 overflow-visible"
+          className="pointer-events-none absolute left-0 top-0 z-10 overflow-visible"
           aria-hidden
         >
           {graph.edges.map((edge) => {
@@ -96,12 +107,20 @@ export function CommitGraph() {
                 />
               );
             }
-            // Different lanes: leave the node, bend, and arrive.
-            const midY = y1 + (y2 - y1) / 2;
+            // Bend next to the real endpoint, so a long merge edge cannot
+            // appear to join an unrelated commit halfway down the main lane.
+            const isMergeParent = from.commit.parents[0] !== edge.to;
+            const bend = ROW_HEIGHT / 2;
+            const path = isMergeParent
+              ? `M ${x1} ${y1} C ${x1} ${y1 + bend / 2} ${x2} ${y1 + bend / 2} ${x2} ${y1 + bend} V ${y2}`
+              : `M ${x1} ${y1} V ${y2 - bend} C ${x1} ${y2 - bend / 2} ${x2} ${y2 - bend / 2} ${x2} ${y2}`;
             return (
               <path
                 key={`${edge.from}-${edge.to}`}
-                d={`M ${x1} ${y1} V ${midY} L ${x2} ${midY} V ${y2}`}
+                d={path}
+                data-edge-kind={isMergeParent ? "merge" : "fork"}
+                data-from={edge.from}
+                data-to={edge.to}
                 fill="none"
                 stroke={stroke}
                 strokeWidth={2}
@@ -117,7 +136,7 @@ export function CommitGraph() {
               data-commit-id={node.commit.id}
               data-lane={node.lane}
               fill={laneColor(node.lane)}
-              stroke="var(--color-card)"
+              stroke={repo.detachedAt === node.commit.id || (repo.detachedAt === null && repo.branches[repo.currentBranch] === node.commit.id) ? "var(--color-foreground)" : "var(--color-card)"}
               strokeWidth={2}
             />
           ))}
@@ -127,41 +146,45 @@ export function CommitGraph() {
           <button
             key={node.commit.id}
             onClick={() => {
-              store.viewCommit(node.commit.id);
-              setPlayhead(0);
+              try {
+                const store = useVcsStore.getState();
+                const editor = useEditorStore.getState();
+                const latest = store.repo;
+                if (latest === null) return;
+                store.viewCommit(node.commit.id);
+                editor.setPlayhead(0);
+                setError(null);
+              } catch (cause) {
+                setError(cause instanceof Error ? cause.message : "Could not view this commit.");
+              }
             }}
             title={`${node.commit.message} · ${node.commit.author} · ${time(node.commit)}. Check out ${node.commit.id} and view its timeline`}
             aria-current={repo.detachedAt === node.commit.id || (repo.detachedAt === null && repo.branches[repo.currentBranch] === node.commit.id) ? "true" : undefined}
-            className="absolute flex min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-raised"
+            className="commit-graph-row absolute"
             style={{
-              left: graphWidth,
+              left: 0,
+              paddingLeft: graphWidth + 8,
               right: 0,
               top: node.row * ROW_HEIGHT,
               height: ROW_HEIGHT,
             }}
           >
-            <span
-              className="ml-1 shrink-0 font-mono text-[10px] text-faint"
-              style={{ width: 22 }}
-            >
-              {node.commit.id}
+            <span className="commit-graph-message">{node.commit.message}</span>
+            <span className="commit-graph-meta">
+              <code>{node.commit.id}</code><span>{node.commit.author}</span>
+              {node.commit.parents.length > 1 && <span className="commit-graph-merge" title={`Parents: ${node.commit.parents.join(" + ")}`}>Merge</span>}
+              {repo.detachedAt === node.commit.id && <span className="commit-graph-head">Viewing · HEAD</span>}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
-              {node.commit.message}
+            <span className="commit-graph-refs">
+              {(tipsByCommit.get(node.commit.id) ?? []).slice(0, 2).map((branch) => (
+                <span key={branch} className="commit-graph-ref" title={branch}
+                  style={{ color: branchColor(branch) }}>
+                  <span>{branch}</span>{repo.currentBranch === branch && repo.detachedAt === null ? " · HEAD" : ""}
+                </span>
+              ))}
+              {(tipsByCommit.get(node.commit.id)?.length ?? 0) > 2 && <span className="text-faint text-[10px]" title={tipsByCommit.get(node.commit.id)?.join(", ")}>+{(tipsByCommit.get(node.commit.id)?.length ?? 0) - 2} branches</span>}
+              {(tipsByCommit.get(node.commit.id)?.length ?? 0) > 1 && <span className="text-faint text-[10px]">Shared tip</span>}
             </span>
-            {tipsByCommit.get(node.commit.id)?.map((branch) => (
-              <span
-                key={branch}
-                className="shrink-0 rounded-full px-1.5 font-mono text-[10px]"
-                style={{
-                  color: branchColor(branch),
-                  border: `1px solid ${branchColor(branch)}`,
-                  background: repo.currentBranch === branch && repo.detachedAt === null ? "var(--color-selection)" : undefined,
-                }}
-              >
-                {branch}{repo.currentBranch === branch && repo.detachedAt === null ? " · HEAD" : ""}
-              </span>
-            ))}
           </button>
         ))}
       </div>

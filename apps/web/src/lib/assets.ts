@@ -12,8 +12,21 @@ import { create } from "zustand";
 export const useAssetUrls = create<ReadonlyMap<string, string>>(() => new Map());
 
 export function registerAssetUrl(assetId: string, url: string): void {
-  if (resolveAssetUrl(assetId) === url) return;
-  useAssetUrls.setState((urls) => new Map(urls).set(assetId, url), true);
+  registerAssetUrls([[assetId, url]]);
+}
+
+export function registerAssetUrls(entries: Iterable<readonly [string, string]>): void {
+  useAssetUrls.setState((urls) => {
+    let next: Map<string, string> | null = null;
+    for (const [assetId, url] of entries) {
+      if ((next ?? urls).get(assetId) === url) continue;
+      next ??= new Map(urls);
+      next.set(assetId, url);
+    }
+    if (next === null) return urls;
+    if (next.size === urls.size && [...next].every(([id, url]) => urls.get(id) === url)) return urls;
+    return next;
+  }, true);
 }
 
 export function resolveAssetUrl(assetId: string): string | undefined {

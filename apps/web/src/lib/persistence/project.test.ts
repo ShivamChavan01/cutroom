@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   type Timeline,
+  type Op,
+  createHistory, current, record, undo, redo,
   applyOps,
   emptyTimeline,
+  fromOTIO,
+  toOTIO,
   makeClip,
   putAsset,
 } from "@cutroom/engine";
@@ -11,6 +15,7 @@ import {
   PROJECT_SCHEMA_VERSION,
   ProjectLoadError,
   deserializeProject,
+  isOp,
   serializeProject,
   toHistory,
   toRepo,
@@ -215,4 +220,110 @@ describe("project serialization", () => {
     expect(() => deserializeProject("[]")).toThrow(/not an object/);
     expect(() => deserializeProject('{"version":1}')).toThrow(/no usable history/);
   });
+});
+
+
+it("round-trips detached audio with its atomic undo and redo history", () => {
+  const base = baseTimeline();
+  const history = record(createHistory(base), { type: "detachAudio", clipId: "a", trackId: "a1" }, "alice");
+  const loaded = deserializeProject(serializeProject({ history, repo: createRepo(base, "alice") }));
+  const restored = toHistory(loaded.history);
+  expect(current(restored).clips["audio:a"]?.volume).toBe(1);
+  expect(current(restored).clips.a?.volume).toBe(0);
+  expect(current(undo(restored))).toEqual(base);
+  expect(current(redo(undo(restored)))).toEqual(current(history));
+});
+
+it.each([0.5, 99, NaN])("rejects invalid cursor %s instead of silently truncating replay", cursor => {
+  const base = baseTimeline();
+  const serialized = serializeProject({ history: { base, log: [], cursor }, repo: createRepo(base, "tester") });
+  expect(() => deserializeProject(serialized)).toThrow(ProjectLoadError);
+});
+it("rejects missing current branch and detached commits", () => {
+  const base = baseTimeline();
+  const repo = createRepo(base, "tester");
+  for (const invalid of [{ ...repo, currentBranch: "missing" }, { ...repo, detachedAt: "missing" }]) {
+    expect(() => deserializeProject(serializeProject({ history: createHistory(base), repo: invalid }))).toThrow(ProjectLoadError);
+  }
+});
+it("rejects cyclic commit graphs before restoring them", () => {
+  const base = baseTimeline();
+  const repo = createRepo(base, "tester");
+  const root = repo.commits.c0!;
+  expect(() => deserializeProject(serializeProject({ history: createHistory(base), repo: { ...repo, commits: { c0: { ...root, parents: ["c0"] } } } }))).toThrow(ProjectLoadError);
+});
+
+
+function validProject() {
+  const base = baseTimeline();
+  return { version: PROJECT_SCHEMA_VERSION, history: createHistory(base), repo: createRepo(base, "tester") };
+}
+type TestProject = ReturnType<typeof validProject>;
+const corruptProjects: readonly [string, (project: TestProject) => unknown][] = [
+  ["empty base snapshot", p => ({ ...p, history: { ...p.history, base: {} } })],
+  ["malformed commit snapshot", p => ({ ...p, repo: { ...p.repo, commits: { c0: { ...p.repo.commits.c0, timeline: {} } } } })],
+  ["invalid clip timing", p => ({ ...p, history: { ...p.history, base: { ...p.history.base, clips: { a: { ...p.history.base.clips.a, outPoint: 7 } } } } })],
+  ["mismatched clip identity", p => ({ ...p, history: { ...p.history, base: { ...p.history.base, clips: { a: { ...p.history.base.clips.a, id: "different" } } } } })],
+  ["invalid track metadata", p => ({ ...p, history: { ...p.history, base: { ...p.history.base, tracks: [{ ...p.history.base.tracks[0], muted: "false" }] } } })],
+  ["invalid asset metadata", p => ({ ...p, history: { ...p.history, base: { ...p.history.base, assets: { "asset-a": { ...p.history.base.assets["asset-a"], tags: [42] } } } } })],
+  ["malformed commit metadata", p => ({ ...p, repo: { ...p.repo, commits: { c0: { ...p.repo.commits.c0, message: {} } } } })],
+  ["coerced branch reference", p => ({ ...p, repo: { ...p.repo, branches: { main: ["c0"] } } })],
+  ["unknown operation", p => ({ ...p, history: { ...p.history, log: [{ op: { type: "bogus" }, author: "a", seq: 0 }], cursor: 1 } })],
+  ["malformed operation envelope", p => ({ ...p, history: { ...p.history, log: [{ op: { type: "renameProject", name: "next" }, author: {}, seq: -1 }], cursor: 1 } })],
+];
+it.each(corruptProjects)("rejects %s before restoring either store", (_name, corrupt) => {
+  const raw = JSON.stringify(corrupt(validProject()));
+  expect(() => deserializeProject(raw)).toThrow(ProjectLoadError);
+});
+
+it("restores structurally valid missing-media timelines for verification", () => {
+  const base = { ...baseTimeline(), assets: {} };
+  const restored = deserializeProject(serializeProject({ history: createHistory(base), repo: createRepo(base, "tester") }));
+  expect(current(toHistory(restored.history))).toEqual(base);
+});
+
+const operationShapes: readonly Op[] = [
+  { type: "addClip", clip: makeClip({ id: "c", assetId: "asset-a", trackId: "v1", start: 0, inPoint: 0, duration: 100, volume: 1 }) },
+  { type: "addTrack", track: { id: "v2", kind: "video", name: "second", muted: false } },
+  { type: "detachAudio", clipId: "a", trackId: "a1" },
+  { type: "deleteClip", clipId: "a" },
+  { type: "splitClip", clipId: "a", at: 1000 },
+  { type: "trimClip", clipId: "a", duration: 2000 },
+  { type: "moveClip", clipId: "a", start: 1000, trackId: "v1" },
+  { type: "setVolume", clipId: "a", volume: 0.5 },
+  { type: "setTransform", clipId: "a", x: 20, scaleX: 2 },
+  { type: "setFrameRate", fps: 25 },
+  { type: "renameProject", name: "next" },
+];
+it.each(operationShapes)("recognizes the persisted $type operation shape", op => {
+  expect(isOp(JSON.parse(JSON.stringify(op)))).toBe(true);
+});
+it.each([
+  null, {}, { type: "bogus" }, { type: "addClip", clip: {} },
+  { type: "addTrack", track: { id: "v2", kind: "video" } },
+  { type: "detachAudio", clipId: "a", trackId: 4 },
+  { type: "deleteClip", clipId: null }, { type: "splitClip", clipId: "a", at: "1000" },
+  { type: "trimClip", clipId: "a", duration: null },
+  { type: "moveClip", clipId: "a", start: 0, trackId: 42 },
+  { type: "setVolume", clipId: "a", volume: NaN },
+  { type: "setTransform", clipId: "a", x: "20" },
+  { type: "setFrameRate", fps: "25" }, { type: "renameProject", name: null },
+])("rejects incomplete or mistyped persisted operation %#", op => {
+  expect(isOp(op)).toBe(false);
+});
+it("validates the redo tail even when the current cursor precedes it", () => {
+  const project = validProject();
+  const raw = JSON.stringify({ ...project, history: { ...project.history, log: [
+    { op: { type: "renameProject", name: "valid" }, author: "tester", seq: 0 },
+    { op: { type: "moveClip", clipId: "absent", start: 0 }, author: "tester", seq: 1 },
+  ], cursor: 1 } });
+  expect(() => deserializeProject(raw)).toThrow(/unusable op log/);
+});
+
+it("restores fractional frame rates preserved by the OTIO adapter", () => {
+  const imported = fromOTIO(toOTIO({ ...baseTimeline(), fps: 29.97 }));
+  expect(imported.fps).toBe(29.97);
+  const restored = deserializeProject(serializeProject({ history: createHistory(imported), repo: createRepo(imported, "tester") }));
+  expect(current(toHistory(restored.history))).toEqual(imported);
+  expect(restored.repo.commits.c0?.timeline.fps).toBe(29.97);
 });

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { type Asset, diffTimelines } from "@cutroom/engine";
+import { type Asset } from "@cutroom/engine";
 import { useAssetUrls } from "../lib/assets";
 import { useVcsStore } from "../vcsStore";
-import { currentCommit } from "../lib/vcs";
 import { clipForMedia, filterMediaAssets, mediaLabel, mediaTags, parseMediaTags } from "../lib/mediaLibrary";
 import { VersionControl } from "./VersionControl";
 import { CommitGraph } from "./CommitGraph";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { AssistantPanel } from "./AssistantPanel";
 import { formatBytes, mediaUsage as readMediaUsage } from "../lib/media/opfs";
 import { useEditorStore } from "../store";
 import { formatTime } from "../theme";
@@ -27,7 +27,6 @@ function LibraryPoster({ asset }: { asset: Asset }) {
 
 function SequenceLibrary() {
   const repo = useVcsStore((state) => state.repo);
-  const timeline = useEditorStore((state) => state.timeline);
   const setRail = useUiStore((state) => state.setRail);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,9 +34,6 @@ function SequenceLibrary() {
 
   const view = (branch: string, commitId?: string) => {
     if (repo === null) return;
-    const changes = diffTimelines(currentCommit(repo).timeline, timeline);
-    const dirty = changes.changes.length + (changes.metadataChanges?.length ?? 0) > 0;
-    if (dirty && !window.confirm("This version has uncommitted edits. Switch without saving them?")) return;
     try {
       if (commitId === undefined) useVcsStore.getState().checkoutBranch(branch);
       else useVcsStore.getState().viewCommit(commitId);
@@ -212,10 +208,12 @@ export function SidePanel() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {rail === "media" && <MediaPanel />}
       {rail === "versions" && <VersionsPanel />}
+      {rail === "assistant" && <AssistantPanel />}
       {rail === "issues" && (
         <>
           <DiagnosticsPanel />
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button size="sm" variant="outline" onClick={() => useUiStore.getState().setRail("assistant")}>Explain issues with AI</Button>
             <Button
               size="sm"
               variant="outline"

@@ -6,9 +6,9 @@ import {
   type History,
   type Op,
   type Timeline,
+  applyOp,
   canRedo,
   canUndo,
-  clipsOnTrack,
   createHistory,
   current,
   emptyTimeline,
@@ -19,6 +19,8 @@ import {
 } from "@cutroom/engine";
 import { getOrCreateAuthorId } from "./lib/identity";
 import { useUiStore } from "./uiStore";
+import { indexedClipsOnTrack } from "./lib/clipIndex";
+import { previewPlan } from "./lib/assistant/proposal";
 
 export interface EditorStore {
   readonly history: History;
@@ -33,6 +35,7 @@ export interface EditorStore {
 
   /** Local edit — the store is the "local edits" call site for applyOp. */
   readonly dispatch: (op: Op) => void;
+  readonly applyProposal: (before: Timeline, ops: readonly Op[]) => void;
   readonly undo: () => void;
   readonly redo: () => void;
   readonly selectClip: (id: string | null) => void;
@@ -72,12 +75,23 @@ export const useEditorStore = create<EditorStore>()((set) => ({
     set((state) => {
       const id = "clipId" in op ? op.clipId : op.type === "addClip" ? op.clip.id : undefined;
       const sourceTrack = id === undefined ? undefined : state.timeline.clips[id]?.trackId;
-      const destinationTrack = op.type === "addClip" ? op.clip.trackId : op.type === "moveClip" ? op.trackId : undefined;
+      const destinationTrack = op.type === "addClip" ? op.clip.trackId : (op.type === "moveClip" || op.type === "detachAudio") ? op.trackId : undefined;
       const locked = useUiStore.getState().lockedTrackIds;
       if ((sourceTrack !== undefined && locked.includes(sourceTrack)) || (destinationTrack !== undefined && locked.includes(destinationTrack))) {
         throw new Error("This track is locked. Unlock it before editing.");
       }
-      return derive(record(state.history, op, state.authorId));
+      const timeline = applyOp(state.timeline, op);
+      const history = record(state.history, op, state.authorId);
+      return { history, timeline };
+    }),
+
+  applyProposal: (before, ops) =>
+    set((state) => {
+      if (state.timeline !== before) throw new Error("The timeline changed. Generate a new proposal before applying.");
+      const proposal = previewPlan(before, { summary: "Apply proposal", ops: [...ops] }, useUiStore.getState().lockedTrackIds);
+      let history = state.history;
+      for (const op of ops) history = record(history, op, state.authorId);
+      return { history, timeline: proposal.after };
     }),
 
   undo: () =>
@@ -131,10 +145,8 @@ export const useEditorStore = create<EditorStore>()((set) => ({
 // ---------------------------------------------------------------------------
 // Narrow selectors. A clip component subscribing to useClip(id) re-renders
 // only when that clip object changes identity — not on playhead ticks,
-// not when other clips change. This is the actual perf lever: derive()
-// replaces the whole clips map on every op, but object identity for
-// untouched clips is preserved by the engine's structural sharing, so
-// reference equality here is meaningful.
+// not when other clips change. Dispatch applies only the new operation,
+// preserving untouched clip references even when prior edits changed them.
 // ---------------------------------------------------------------------------
 
 export function useClip(id: string): Clip | undefined {
@@ -142,9 +154,7 @@ export function useClip(id: string): Clip | undefined {
 }
 
 export function useClipsOnTrack(trackId: string): readonly Clip[] {
-  return useEditorStore(
-    useShallow((state) => clipsOnTrack(state.timeline, trackId)),
-  );
+  return useEditorStore((state) => indexedClipsOnTrack(state.timeline, trackId));
 }
 
 export function useTrackIds(): readonly string[] {

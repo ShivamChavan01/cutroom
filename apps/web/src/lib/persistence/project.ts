@@ -1,11 +1,16 @@
 import {
+  type Asset,
+  type Clip,
+  type Track,
   type History,
   type Op,
   type OpEnvelope,
   type Timeline,
   applyOps,
+  clipIsWellFormed,
+  TRANSFORM_FIELDS,
 } from "@cutroom/engine";
-import type { Commit, Repo } from "../vcs";
+import { findMergeBases, type Commit, type Repo } from "../vcs";
 
 /**
  * Project persistence: the pure half.
@@ -73,6 +78,59 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function optionalNumbers(value: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every(field => value[field] === undefined || isFiniteNumber(value[field]));
+}
+
+function isClip(value: unknown): value is Clip {
+  return isRecord(value) && typeof value.id === "string" && typeof value.trackId === "string" &&
+    typeof value.assetId === "string" &&
+    ["start", "inPoint", "duration", "outPoint", "volume"].every(field => isFiniteNumber(value[field])) &&
+    optionalNumbers(value, TRANSFORM_FIELDS);
+}
+
+function isTrack(value: unknown): value is Track {
+  return isRecord(value) && typeof value.id === "string" &&
+    (value.kind === "video" || value.kind === "audio") &&
+    typeof value.name === "string" && typeof value.muted === "boolean";
+}
+
+function isAsset(value: unknown): value is Asset {
+  return isRecord(value) && typeof value.id === "string" &&
+    (value.kind === "video" || value.kind === "audio" || value.kind === "image") &&
+    isFiniteNumber(value.duration) && value.duration >= 0 &&
+    optionalNumbers(value, ["width", "height", "bytes"]) &&
+    ["width", "height", "bytes"].every(field => value[field] === undefined || (typeof value[field] === "number" && value[field] >= 0)) &&
+    ["proxyId", "name", "mimeType"].every(field => value[field] === undefined || typeof value[field] === "string") &&
+    (value.tags === undefined || (Array.isArray(value.tags) && value.tags.every(tag => typeof tag === "string")));
+}
+
+function isTimeline(value: unknown): value is Timeline {
+  if (!isRecord(value) || typeof value.id !== "string" || !isRecord(value.clips) ||
+      !isRecord(value.assets) || !Array.isArray(value.tracks)) return false;
+  if (value.fps !== undefined && (!isFiniteNumber(value.fps) || value.fps < 1 || value.fps > 120)) return false;
+  if (!value.tracks.every(isTrack) || new Set(value.tracks.map(track => track.id)).size !== value.tracks.length) return false;
+  // Missing media remains a valid, lintable state. Validate stored shapes and
+  // timing here without inventing assets or discarding offline timelines.
+  return Object.entries(value.clips).every(([id, clip]) => isClip(clip) && clip.id === id && clipIsWellFormed(clip)) &&
+    Object.entries(value.assets).every(([id, asset]) => isAsset(asset) && asset.id === id);
+}
+
+function isEnvelope(value: unknown): value is OpEnvelope {
+  return isRecord(value) && isOp(value.op) && typeof value.author === "string" &&
+    typeof value.seq === "number" && Number.isSafeInteger(value.seq) && value.seq >= 0;
+}
+
+function isCommit(value: unknown): value is Commit {
+  return isRecord(value) && typeof value.id === "string" && typeof value.message === "string" &&
+    typeof value.author === "string" && isFiniteNumber(value.at) && isTimeline(value.timeline) &&
+    Array.isArray(value.parents) && value.parents.every(parent => typeof parent === "string");
+}
+
 /**
  * Parse and validate stored project data.
  *
@@ -99,10 +157,10 @@ export function deserializeProject(raw: string): PersistedProject {
     );
   }
   const history = parsed.history;
-  if (!isRecord(history) || !isRecord(history.base) || !Array.isArray(history.log)) {
+  if (!isRecord(history) || !isTimeline(history.base) || !Array.isArray(history.log)) {
     throw new ProjectLoadError("stored project has no usable history", raw);
   }
-  if (typeof history.cursor !== "number" || history.cursor < 0) {
+  if (typeof history.cursor !== "number" || !Number.isSafeInteger(history.cursor) || history.cursor < 0 || history.cursor > history.log.length) {
     throw new ProjectLoadError("stored project has an invalid undo cursor", raw);
   }
   const repo = parsed.repo;
@@ -119,9 +177,13 @@ export function deserializeProject(raw: string): PersistedProject {
   }
 
   // Replay: the engine's own rules decide what a valid op log is.
-  const envelopes = history.log as readonly OpEnvelope[];
+  if (!history.log.every(isEnvelope)) {
+    throw new ProjectLoadError("stored project has an unusable op log: malformed operation or envelope", raw);
+  }
+  const envelopes = history.log;
   try {
-    applyOps(history.base as unknown as Timeline, envelopes.map((e) => e.op));
+    const replayed = applyOps(history.base, envelopes.map((e) => e.op));
+    if (!isTimeline(replayed)) throw new Error("operation replay produced a malformed timeline");
   } catch (error) {
     throw new ProjectLoadError(
       `stored project has an unusable op log: ${
@@ -132,10 +194,16 @@ export function deserializeProject(raw: string): PersistedProject {
   }
 
   // Every commit's parents must exist, or the graph and the merge base lie.
-  const commits = repo.commits as Record<string, Commit>;
+  const commits: Record<string, Commit> = {};
+  for (const [id, commit] of Object.entries(repo.commits)) {
+    if (!isCommit(commit) || commit.id !== id) {
+      throw new ProjectLoadError(`commit ${id} is malformed`, raw);
+    }
+    Object.defineProperty(commits, id, { value: commit, enumerable: true, configurable: true, writable: true });
+  }
   for (const commit of Object.values(commits)) {
     for (const parent of commit.parents) {
-      if (commits[parent] === undefined) {
+      if (!Object.hasOwn(commits, parent)) {
         throw new ProjectLoadError(
           `commit ${commit.id} references missing parent ${parent}`,
           raw,
@@ -143,20 +211,35 @@ export function deserializeProject(raw: string): PersistedProject {
       }
     }
   }
-  const branches = repo.branches as Record<string, string>;
-  for (const [name, commitId] of Object.entries(branches)) {
-    if (commits[commitId] === undefined) {
+  const branches: Record<string, string> = {};
+  for (const [name, commitId] of Object.entries(repo.branches)) {
+    if (typeof commitId !== "string" || !Object.hasOwn(commits, commitId)) {
       throw new ProjectLoadError(
         `branch ${name} points at missing commit ${commitId}`,
         raw,
       );
     }
+    Object.defineProperty(branches, name, { value: commitId, enumerable: true, configurable: true, writable: true });
+  }
+
+  if (!Object.hasOwn(branches, repo.currentBranch) || branches[repo.currentBranch] === undefined || (typeof repo.detachedAt === "string" && !Object.hasOwn(commits, repo.detachedAt))) {
+    throw new ProjectLoadError("stored project HEAD points at a missing branch or commit", raw);
+  }
+  // A synthetic head reaches every commit, including abandoned/detached lines,
+  // allowing the existing iterative graph validator to reject cycles once.
+  let validationId = "__validation_head__";
+  while (commits[validationId] !== undefined) validationId += "_";
+  const validationHead: Commit = { id: validationId, parents: Object.keys(commits), timeline: history.base, message: "validate", author: "", at: 0 };
+  try {
+    findMergeBases({ commits: { ...commits, [validationId]: validationHead }, branches, currentBranch: repo.currentBranch, detachedAt: null }, validationId, validationId);
+  } catch (error) {
+    throw new ProjectLoadError(error instanceof Error ? error.message : "invalid commit graph", raw);
   }
 
   return {
     version: PROJECT_SCHEMA_VERSION,
     history: {
-      base: history.base as unknown as Timeline,
+      base: history.base,
       log: envelopes,
       cursor: history.cursor,
     },
@@ -164,7 +247,7 @@ export function deserializeProject(raw: string): PersistedProject {
       commits,
       branches,
       currentBranch: repo.currentBranch,
-      detachedAt: (repo.detachedAt as string | null) ?? null,
+      detachedAt: repo.detachedAt,
     },
   };
 }
@@ -187,7 +270,22 @@ export function toRepo(persisted: PersistedRepo): Repo {
   };
 }
 
-/** Type guard for a persisted op, used by the store when restoring. */
+/** Validate the entire persisted operation variant before calling the reducer. */
 export function isOp(value: unknown): value is Op {
-  return isRecord(value) && typeof value.type === "string";
+  if (!isRecord(value)) return false;
+  const clipId = typeof value.clipId === "string";
+  switch (value.type) {
+    case "addClip": return isClip(value.clip) && clipIsWellFormed(value.clip);
+    case "addTrack": return isTrack(value.track);
+    case "detachAudio": return clipId && typeof value.trackId === "string";
+    case "deleteClip": return clipId;
+    case "splitClip": return clipId && isFiniteNumber(value.at);
+    case "trimClip": return clipId && optionalNumbers(value, ["inPoint", "duration"]);
+    case "moveClip": return clipId && isFiniteNumber(value.start) && (value.trackId === undefined || typeof value.trackId === "string");
+    case "setVolume": return clipId && isFiniteNumber(value.volume);
+    case "setTransform": return clipId && optionalNumbers(value, TRANSFORM_FIELDS);
+    case "setFrameRate": return isFiniteNumber(value.fps);
+    case "renameProject": return typeof value.name === "string";
+    default: return false;
+  }
 }

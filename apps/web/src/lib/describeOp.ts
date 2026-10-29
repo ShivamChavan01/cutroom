@@ -13,6 +13,8 @@ export function describeOp(op: Op): string {
   switch (op.type) {
     case "addClip":
       return `added ${op.clip.id} on ${op.clip.trackId} at ${seconds(op.clip.start)}`;
+    case "detachAudio":
+      return `detached ${op.clipId} audio to ${op.trackId}`;
     case "deleteClip":
       return `deleted ${op.clipId}`;
     case "splitClip":

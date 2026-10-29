@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 import {
   type Conflict,
   type MergeResult,
@@ -6,6 +6,7 @@ import {
   resolveField,
 } from "@cutroom/engine";
 import type { TimeScale } from "../lib/timeScale";
+import { clipsInTimelineWindow, intersectsTimelineWindow, type TimelineWindow } from "../lib/timelineViewport";
 import { DIFF_BORDER } from "./ClipBlock";
 import type { ClipVisual } from "../lib/diffView";
 import type { ConflictBand, ConflictGhost } from "../lib/mergeView";
@@ -17,6 +18,9 @@ interface TrackProps {
   readonly trackId: string;
   readonly scale: TimeScale;
   readonly laneWidth: number;
+  readonly visibleWindow: TimelineWindow;
+  readonly pinnedClipIds: readonly (string | null)[];
+  readonly focusedConflictKey: string | null;
   readonly assetDurations: Readonly<Record<string, number>>;
   readonly diagnosticsByClip: ReadonlyMap<string, readonly Diagnostic[]>;
   readonly authors: ReadonlyMap<string, string>;
@@ -37,6 +41,11 @@ interface BandChoice {
 /** The same side-picks the merge list offers; wording must stay identical. */
 function bandChoices(conflict: Conflict): readonly BandChoice[] {
   switch (conflict.kind) {
+    case "assetField":
+    case "trackField":
+    case "assetPresence":
+    case "trackPresence":
+    case "trackOrder":
     case "project":
       return [];
     case "field":
@@ -93,6 +102,9 @@ export const Track = memo(function Track({
   trackId,
   scale,
   laneWidth,
+  visibleWindow,
+  pinnedClipIds,
+  focusedConflictKey,
   assetDurations,
   diagnosticsByClip,
   authors,
@@ -105,16 +117,35 @@ export const Track = memo(function Track({
 }: TrackProps) {
   const clips = useClipsOnTrack(trackId);
   const selectClip = useEditorStore((state) => state.selectClip);
+  const visibleClips = useMemo(
+    () => clipsInTimelineWindow(clips, visibleWindow, pinnedClipIds),
+    [clips, visibleWindow, pinnedClipIds],
+  );
+  const visibleGhosts = useMemo(
+    () => ghosts.filter((visual) => visual.ghost !== undefined
+      && intersectsTimelineWindow(visual.ghost.start, visual.ghost.start + visual.ghost.duration, visibleWindow)),
+    [ghosts, visibleWindow],
+  );
+  const visibleConflictGhosts = useMemo(
+    () => conflictGhosts.filter(({ clip }) => intersectsTimelineWindow(clip.start, clip.start + clip.duration, visibleWindow)),
+    [conflictGhosts, visibleWindow],
+  );
+  const visibleBands = useMemo(
+    () => conflictBands.filter((band) => band.key === focusedConflictKey
+      || intersectsTimelineWindow(band.start, band.end, visibleWindow)),
+    [conflictBands, visibleWindow, focusedConflictKey],
+  );
 
   // Moved clips: dashed link from the old start to the new start, drawn
   // under the blocks so it reads as a trail, not a selection.
-  const movedLinks = clips.flatMap((clip) => {
+  const movedLinks = useMemo(() => clips.flatMap((clip) => {
     const visual = diffById.get(clip.id);
     if (visual?.linkFromMs === undefined) return [];
     const from = Math.min(visual.linkFromMs, clip.start);
     const to = Math.max(visual.linkFromMs, clip.start);
+    if (!intersectsTimelineWindow(from, to, visibleWindow)) return [];
     return [{ key: clip.id, from, to }];
-  });
+  }), [clips, diffById, visibleWindow]);
 
   return (
     <div
@@ -143,13 +174,14 @@ export const Track = memo(function Track({
           }}
         />
       ))}
-      {clips.map((clip) => {
+      {visibleClips.map((clip) => {
         const visual = diffById.get(clip.id);
         return (
           <ClipBlock
             key={clip.id}
             clip={clip}
             scale={scale}
+            visibleWindow={visibleWindow}
             assetDurationMs={assetDurations[clip.assetId]}
             diagnostics={diagnosticsByClip.get(clip.id) ?? []}
             author={authors.get(clip.id)}
@@ -159,7 +191,7 @@ export const Track = memo(function Track({
           />
         );
       })}
-      {ghosts.map((visual) =>
+      {visibleGhosts.map((visual) =>
         visual.ghost === undefined ? null : (
           <ClipBlock
             key={`ghost-${visual.clipId}`}
@@ -174,7 +206,7 @@ export const Track = memo(function Track({
           />
         ),
       )}
-      {conflictGhosts.map((ghost) => (
+      {visibleConflictGhosts.map((ghost) => (
         <ClipBlock
           key={`conflict-ghost-${ghost.key}`}
           clip={ghost.clip}
@@ -188,9 +220,10 @@ export const Track = memo(function Track({
       ))}
       {mergeResult === null
         ? null
-        : conflictBands.map((band) => (
+        : visibleBands.map((band) => (
             <div
               key={band.key}
+              data-conflict-key={band.key}
               title={band.label}
               style={{
                 position: "absolute",

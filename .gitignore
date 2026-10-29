@@ -4,3 +4,22 @@ dist
 *.tsbuildinfo
 .DS_Store
 .gstack/
+
+# Local credentials. Keep shareable configuration templates visible.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Personal files and local tooling kept beside the project.
+/*.mp4
+/*.mov
+/*.mkv
+/*.webm
+/*.pdf
+/ChatGPT Image*.png
+/bridge/

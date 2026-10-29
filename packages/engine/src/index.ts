@@ -7,3 +7,4 @@ export * from "./lint.js";
 export * from "./otio.js";
 export * from "./timecode.js";
 export * from "./export/index.js";
+export * from "./metadataMerge.js";

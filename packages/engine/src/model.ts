@@ -81,6 +81,8 @@ export interface Timeline {
 /** Zero-length clips carry no content and would poison every geometric check. */
 export function clipIsWellFormed(clip: Clip): boolean {
   return (
+    [clip.start, clip.inPoint, clip.duration, clip.outPoint, clip.volume].every(Number.isFinite) &&
+    clip.start >= 0 && clip.volume >= 0 && clip.volume <= 1 &&
     clip.duration > 0 &&
     clip.inPoint >= 0 &&
     clip.outPoint === clip.inPoint + clip.duration &&

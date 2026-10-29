@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearAssetUrls,
   registerAssetUrl,
+  registerAssetUrls,
   resolveAssetUrl,
   useAssetUrls,
 } from "./assets";
@@ -66,5 +67,55 @@ describe("asset URLs", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  it("publishes a batch once while preserving unrelated assets and prior snapshots", () => {
+    registerAssetUrl("unrelated", "blob:live");
+    const previous = useAssetUrls.getState();
+    const snapshots: ReadonlyMap<string, string>[] = [];
+    const unsubscribe = useAssetUrls.subscribe((urls) => snapshots.push(urls));
+    try {
+      registerAssetUrls([["a", "blob:a"], ["b", "blob:b"]]);
+      expect(snapshots).toHaveLength(1);
+      expect([...useAssetUrls.getState()]).toEqual([
+        ["unrelated", "blob:live"], ["a", "blob:a"], ["b", "blob:b"],
+      ]);
+      expect([...previous]).toEqual([["unrelated", "blob:live"]]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("does not notify for empty, unchanged or reverted batches", () => {
+    registerAssetUrl("a", "blob:a");
+    const previous = useAssetUrls.getState();
+    const listener = vi.fn();
+    const unsubscribe = useAssetUrls.subscribe(listener);
+    try {
+      registerAssetUrls([]);
+      registerAssetUrls([["a", "blob:a"]]);
+      registerAssetUrls([["a", "blob:temporary"], ["a", "blob:a"]]);
+      expect(listener).not.toHaveBeenCalled();
+      expect(useAssetUrls.getState()).toBe(previous);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("uses the last URL for duplicate asset IDs in a batch", () => {
+    registerAssetUrls([["a", "blob:first"], ["a", "blob:last"]]);
+    expect(resolveAssetUrl("a")).toBe("blob:last");
+  });
+
+  it("keeps the registry unchanged if reading a batch fails", () => {
+    registerAssetUrl("a", "blob:live");
+    const previous = useAssetUrls.getState();
+    function* brokenEntries(): Generator<readonly [string, string]> {
+      yield ["b", "blob:b"];
+      throw new Error("batch failed");
+    }
+    expect(() => registerAssetUrls(brokenEntries())).toThrow("batch failed");
+    expect(useAssetUrls.getState()).toBe(previous);
+    expect(resolveAssetUrl("b")).toBeUndefined();
   });
 });

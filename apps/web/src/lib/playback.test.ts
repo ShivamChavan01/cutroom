@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyTimeline, makeClip } from "@cutroom/engine";
+import { applyOp, clipsOnTrack, emptyTimeline, makeClip, type Timeline } from "@cutroom/engine";
 import { advancePlayback, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "./playback";
 
 const a = makeClip({
@@ -41,6 +41,45 @@ describe("layered playback", () => {
     const timeline = { ...emptyTimeline(), clips: { a } };
     expect(resolvePlaybackLayers(timeline, 1_000, ["v1"])).toEqual([]);
     expect(resolvePlaybackLayers(timeline, 5_000)).toEqual([]);
+  });
+
+  it("matches uncached resolution across overlaps, ties, gaps and exact boundaries", () => {
+    const long = { ...a, id: "long", duration: 10_000, outPoint: 11_000 };
+    const tieB = { ...a, id: "tie-b", start: 1_000, duration: 500, outPoint: 1_500 };
+    const tieA = { ...tieB, id: "tie-a" };
+    const sound = { ...a, id: "sound", trackId: "a1", start: 12_000 };
+    const timeline: Timeline = {
+      ...emptyTimeline(),
+      clips: { tieB, sound, tieA, long },
+    };
+    for (const at of [-1, 0, 999, 1_000, 1_499, 1_500, 9_999, 10_000, 11_000, 12_000, 16_000]) {
+      for (const hidden of [[], ["v1"], ["a1"], ["a1", "v1"]]) {
+        const expected = timeline.tracks.flatMap((track) => {
+          if (hidden.includes(track.id)) return [];
+          const active = resolveActiveClip(clipsOnTrack(timeline, track.id), at);
+          return active === null ? [] : [{ ...active, track }];
+        });
+        expect(resolvePlaybackLayers(timeline, at, hidden)).toEqual(expected);
+      }
+    }
+    expect(resolvePlaybackLayers(timeline, 1_000)[0]?.clip.id).toBe("long");
+    const withoutLong = applyOp(timeline, { type: "deleteClip", clipId: "long" });
+    expect(resolvePlaybackLayers(withoutLong, 1_000)[0]?.clip.id).toBe("tie-a");
+    expect(resolvePlaybackLayers(timeline, 1_000)[0]?.clip.id).toBe("long");
+  });
+
+  it("uses current track metadata and order when clip arrays are reused", () => {
+    const sound = { ...a, id: "sound", trackId: "a1" };
+    const timeline: Timeline = { ...emptyTimeline(), clips: { a, sound } };
+    resolvePlaybackLayers(timeline, 500);
+    const reordered = {
+      ...timeline,
+      tracks: [...timeline.tracks].reverse().map((track) => ({ ...track, muted: true })),
+    };
+    const layers = resolvePlaybackLayers(reordered, 500);
+    expect(layers.map((layer) => layer.clip.id)).toEqual(["sound", "a"]);
+    expect(layers.every((layer) => layer.track.muted)).toBe(true);
+    expect(resolvePlaybackLayers(reordered, 500, ["a1"]).map((layer) => layer.clip.id)).toEqual(["a"]);
   });
 
   it("applies the clip gain and independent track mute", () => {
@@ -116,4 +155,20 @@ describe("resolveActiveClip", () => {
     expect(nextClip(clips, a)?.id).toBe("b");
     expect(nextClip(clips, b)).toBeNull();
   });
+});
+
+
+it("holds the timeline during buffering and resumes without catching up lost wall time", () => {
+  const at = 2000;
+  expect(advancePlayback({ at, previousFrame: 100, frame: 600, duration: 10000, buffering: true })).toEqual({ time: at, ended: false });
+  expect(advancePlayback({ at, previousFrame: 600, frame: 616, duration: 10000, buffering: false })).toEqual({ time: 2016, ended: false });
+});
+
+it("resolves detached audio at the same source time with only one audible layer", () => {
+  const base = { ...emptyTimeline(), assets: { "asset-a": { id: "asset-a", kind: "video" as const, duration: 30000 } }, clips: { a: { ...a, volume: 0.6 } } };
+  const timeline = applyOp(base, { type: "detachAudio", clipId: "a", trackId: "a1" });
+  const layers = resolvePlaybackLayers(timeline, 2000);
+  expect(layers.map((layer) => layer.sourceTimeMs)).toEqual([3000, 3000]);
+  expect(layers.map((layer) => playbackGain(layer.clip, layer.track))).toEqual([0, 0.6]);
+  expect(layers.map((layer) => playbackGain(layer.clip, layer.track, ["a1"]))).toEqual([0, 0]);
 });

@@ -1,6 +1,7 @@
-import { type Track, clipsOnTrack, timelineDuration } from "@cutroom/engine";
+import { type Track } from "@cutroom/engine";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { advancePlayback, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "../lib/playback";
+import { indexedClipsOnTrack, indexedTimelineDuration } from "../lib/clipIndex";
 import { resolveAssetUrl, useAssetUrls } from "../lib/assets";
 import { decideSwap, isSameSource, otherSide, type Side } from "../lib/swap";
 import { useEditorStore } from "../store";
@@ -30,7 +31,7 @@ function TrackPlayer({ track, order, muted, onError, onReady }: {
   const timeline = useEditorStore((state) => state.timeline);
   const at = useEditorStore((state) => state.playheadMs);
   const playing = useEditorStore((state) => state.isPlaying);
-  const clips = useMemo(() => clipsOnTrack(timeline, track.id), [timeline, track.id]);
+  const clips = useMemo(() => indexedClipsOnTrack(timeline, track.id), [timeline, track.id]);
   const active = resolveActiveClip(clips, at);
   const asset = active === null ? undefined : timeline.assets[active.clip.assetId];
   const source = useAssetUrls((urls) => active === null ? undefined : urls.get(active.clip.assetId));
@@ -92,7 +93,7 @@ function TrackPlayer({ track, order, muted, onError, onReady }: {
     element.onseeked = () => {
       const store = useEditorStore.getState();
       if (store.isPlaying || live.current !== side) return;
-      const latest = resolveActiveClip(clipsOnTrack(store.timeline, track.id), store.playheadMs);
+      const latest = resolveActiveClip(indexedClipsOnTrack(store.timeline, track.id), store.playheadMs);
       if (latest?.clip.assetId !== desired.assetId) return;
       const targetTime = latest.sourceTimeMs / 1000;
       if (Math.abs(element.currentTime - targetTime) > 0.001) element.currentTime = targetTime;
@@ -108,7 +109,7 @@ function TrackPlayer({ track, order, muted, onError, onReady }: {
       element.src = source;
       element.onloadedmetadata = () => {
         const store = useEditorStore.getState();
-        const latest = resolveActiveClip(clipsOnTrack(store.timeline, track.id), store.playheadMs);
+        const latest = resolveActiveClip(indexedClipsOnTrack(store.timeline, track.id), store.playheadMs);
         if (latest?.clip.assetId !== desired.assetId) return;
         element.currentTime = latest.sourceTimeMs / 1000;
         start(element);
@@ -175,13 +176,13 @@ function TrackPlayer({ track, order, muted, onError, onReady }: {
     <div data-player-track={track.id} data-active-clip={active?.clip.id} style={{ position: "absolute", inset: 0, zIndex: order, pointerEvents: "none" }}>
       {track.kind === "audio" ? (
         <>
-          <audio ref={setA} preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
-          <audio ref={setB} preload="auto" onPlaying={onPlaying} onError={() => failed("b")} />
+          <audio data-player-live={visibleSide === "a"} ref={setA} preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
+          <audio data-player-live={visibleSide === "b"} ref={setB} preload="auto" onPlaying={onPlaying} onError={() => failed("b")} />
         </>
       ) : (
         <>
-          <video ref={setA} style={mediaStyle("a")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
-          <video ref={setB} style={mediaStyle("b")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("b")} />
+          <video data-player-live={visibleSide === "a"} ref={setA} style={mediaStyle("a")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("a")} />
+          <video data-player-live={visibleSide === "b"} ref={setB} style={mediaStyle("b")} playsInline preload="auto" onPlaying={onPlaying} onLoadedData={onReady} onError={() => failed("b")} />
         </>
       )}
       {visual && image && source !== undefined && active !== null && (
@@ -232,7 +233,15 @@ export function Player({ zoom = "fit", fill = false }: { readonly zoom?: "fit" |
     const tick = (frame: number): void => {
       const store = useEditorStore.getState();
       if (!store.isPlaying) return;
-      const next = advancePlayback({ at: store.playheadMs, previousFrame, frame, duration: timelineDuration(store.timeline) });
+      const activeLayers = resolvePlaybackLayers(store.timeline, store.playheadMs, useUiStore.getState().hiddenTrackIds);
+      const players = Array.from(viewport.current?.querySelectorAll<HTMLElement>("[data-player-track]") ?? []);
+      const buffering = activeLayers.some(({ clip, track }) => {
+        if (store.timeline.assets[clip.assetId]?.kind === "image") return false;
+        const player = players.find((element) => element.dataset.playerTrack === track.id);
+        const media = player?.querySelector<HTMLMediaElement>('[data-player-live="true"]');
+        return player?.dataset.activeClip !== clip.id || media === undefined || media === null || media.readyState < 2 || media.seeking;
+      });
+      const next = advancePlayback({ at: store.playheadMs, previousFrame, frame, duration: indexedTimelineDuration(store.timeline), buffering });
       previousFrame = frame;
       store.setPlayhead(next.time);
       if (next.ended) {

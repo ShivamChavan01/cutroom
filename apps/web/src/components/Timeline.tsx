@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { authorsByClip, lint, timelineDuration } from "@cutroom/engine";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { authorsByClip, lint, detachedAudioId } from "@cutroom/engine";
+import { planAudioDetach } from "../lib/detachAudio";
+import { indexedTimelineDuration } from "../lib/clipIndex";
 import { diffToVisuals, type ClipVisual } from "../lib/diffView";
 import {
   conflictsToVisuals,
@@ -8,6 +10,7 @@ import {
 } from "../lib/mergeView";
 import { uploadFiles } from "../lib/upload";
 import { createTimeScale } from "../lib/timeScale";
+import { rulerTicksInTimelineWindow, timelineWindow } from "../lib/timelineViewport";
 import { formatRulerTime } from "../lib/timecode";
 import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
 import { useEditorStore, usePlayhead, useSelection, useTrackIds } from "../store";
@@ -28,6 +31,18 @@ const EMPTY_MAP: ReadonlyMap<string, ClipVisual> = new Map();
 const EMPTY_LIST: readonly ClipVisual[] = [];
 const EMPTY_BANDS: readonly ConflictBand[] = [];
 const EMPTY_GHOSTS: readonly ConflictGhost[] = [];
+
+function clipIdAtTarget(target: EventTarget | null): string | null {
+  return target instanceof Element
+    ? target.closest<HTMLElement>("[data-clip-id]")?.dataset.clipId ?? null
+    : null;
+}
+
+function conflictKeyAtTarget(target: EventTarget | null): string | null {
+  return target instanceof Element
+    ? target.closest<HTMLElement>("[data-conflict-key]")?.dataset.conflictKey ?? null
+    : null;
+}
 
 /**
  * The timeline editor: toolbar, ruler, track headers, lanes, playhead.
@@ -50,9 +65,12 @@ export function Timeline() {
   const setInspectorTab = useUiStore((state) => state.setInspectorTab);
   const selectedLocked = selection !== null && lockedTracks.includes(timeline.clips[selection]?.trackId ?? "");
 
+  const [audioNotice, setAudioNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const detachPlan = useMemo(() => planAudioDetach(timeline, selection, lockedTracks), [timeline, selection, lockedTracks]);
+
   const scale = useMemo(() => createTimeScale(pxPerSecond), [pxPerSecond]);
   const laneWidth = useMemo(
-    () => Math.max(600, scale.timeToPx(timelineDuration(timeline) + TAIL_MS)),
+    () => Math.max(600, scale.timeToPx(indexedTimelineDuration(timeline) + TAIL_MS)),
     [scale, timeline],
   );
 
@@ -71,7 +89,7 @@ export function Timeline() {
 
   // Blame, derived from the log like everything else — recomputed only
   // when history moves, so playhead ticks never re-derive it.
-  const authors = useMemo(() => authorsByClip(history), [history]);
+  const authors = useMemo(() => authorsByClip(history, timeline), [history, timeline]);
 
   // Diff overlay: computed once per overlay object, fanned out per clip
   // and per track for ghosts. Null when no comparison is active.
@@ -101,7 +119,44 @@ export function Timeline() {
 
   const [dragging, setDragging] = useState(false);
   const laneRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ left: 0, width: 1_200 });
+  const [pointerClipId, setPointerClipId] = useState<string | null>(null);
+  const [focusedClipId, setFocusedClipId] = useState<string | null>(null);
+  const [focusedConflictKey, setFocusedConflictKey] = useState<string | null>(null);
   const draggingPlayheadRef = useRef(false);
+  const pinnedClipIds = useMemo(
+    () => [selection, pointerClipId, focusedClipId],
+    [selection, pointerClipId, focusedClipId],
+  );
+  const visibleWindow = useMemo(
+    () => timelineWindow({ scrollLeft: viewport.left, width: viewport.width, scale }),
+    [viewport, scale],
+  );
+  const isEmpty = useMemo(() => Object.keys(timeline.clips).length === 0, [timeline.clips]);
+
+  const measureViewport = useCallback(() => {
+    const element = viewportRef.current;
+    if (element === null) return;
+    const left = element.scrollLeft;
+    const width = element.clientWidth;
+    setViewport((previous) => previous.left === left && previous.width === width
+      ? previous
+      : { left, width });
+  }, []);
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (element === null) return;
+    measureViewport();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measureViewport);
+      return () => window.removeEventListener("resize", measureViewport);
+    }
+    const observer = new ResizeObserver(measureViewport);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [measureViewport]);
 
   /** Time under a client X, measured against the real lane element. */
   const timeAtClientX = useCallback(
@@ -131,18 +186,26 @@ export function Timeline() {
     event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const rulerTicks = useMemo(() => {
-    const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300];
-    const step = steps.find((s) => s * scale.pxPerSecond >= 80) ?? 600;
-    const ticks: number[] = [];
-    const endMs = (laneWidth / scale.pxPerSecond) * 1000;
-    for (let ms = 0; ms <= endMs; ms += step * 1000) ticks.push(ms);
-    return ticks;
-  }, [scale, laneWidth]);
+  const rulerTicks = useMemo(
+    () => rulerTicksInTimelineWindow(visibleWindow, scale, laneWidth),
+    [visibleWindow, scale, laneWidth],
+  );
 
   return (
     <div
       className="studio-timeline flex flex-col"
+      onPointerDownCapture={(event) => setPointerClipId(clipIdAtTarget(event.target))}
+      onPointerUp={() => setPointerClipId(null)}
+      onPointerCancel={() => setPointerClipId(null)}
+      onLostPointerCapture={() => setPointerClipId(null)}
+      onFocusCapture={(event) => {
+        setFocusedClipId(clipIdAtTarget(event.target));
+        setFocusedConflictKey(conflictKeyAtTarget(event.target));
+      }}
+      onBlurCapture={(event) => {
+        setFocusedClipId(clipIdAtTarget(event.relatedTarget));
+        setFocusedConflictKey(conflictKeyAtTarget(event.relatedTarget));
+      }}
       onDragOver={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -180,6 +243,20 @@ export function Timeline() {
         >
           <Trash2 /> Delete
         </Button>
+        <Button size="sm" variant="ghost" disabled={detachPlan.kind === "unavailable"}
+          title={detachPlan.kind === "unavailable" ? detachPlan.reason : `Move sound to ${detachPlan.trackName}; video audio becomes silent`}
+          onClick={() => {
+            try {
+              const editor = useEditorStore.getState();
+              const plan = planAudioDetach(editor.timeline, editor.selectedClipId, useUiStore.getState().lockedTrackIds);
+              if (plan.kind === "unavailable") throw new Error(plan.reason);
+              editor.dispatch(plan.op);
+              editor.selectClip(detachedAudioId(plan.op.clipId));
+              setAudioNotice({ kind: "success", message: `Detached audio to ${plan.trackName} as one undoable edit.` });
+            } catch (cause) {
+              setAudioNotice({ kind: "error", message: cause instanceof Error ? cause.message : "Could not detach audio." });
+            }
+          }}><Volume2 /> Detach audio</Button>
         <span className="flex-1" />
         <Button size="sm" variant="ghost" title="Add video track" onClick={() => {
           const number = Math.max(0, ...timeline.tracks.filter((track) => track.kind === "video").map((track) => Number(track.id.slice(1)))) + 1;
@@ -205,8 +282,8 @@ export function Timeline() {
           <ZoomIn />
         </Button>
         <Button size="sm" variant="ghost" onClick={() => {
-          const width = laneRef.current?.parentElement?.parentElement?.clientWidth ?? 800;
-          setZoom((width - 30) / Math.max(1, timelineDuration(timeline) / 1000));
+          const width = viewportRef.current?.clientWidth ?? 800;
+          setZoom((width - 30) / Math.max(1, indexedTimelineDuration(timeline) / 1000));
         }}>Fit timeline</Button>
       </div>
 
@@ -229,6 +306,11 @@ export function Timeline() {
           </button>
         </div>
       )}
+
+      {audioNotice !== null && <div role={audioNotice.kind === "error" ? "alert" : "status"} className="flex items-center gap-2 border-b border-border px-3 py-1 text-[11px] text-muted">
+        <span className={audioNotice.kind === "error" ? "text-destructive" : undefined}>{audioNotice.message}</span>
+        <button type="button" className="ml-auto" aria-label="Dismiss audio message" onClick={() => setAudioNotice(null)}>Dismiss</button>
+      </div>}
 
       <div className="flex min-h-0">
         {/* Track headers */}
@@ -253,7 +335,7 @@ export function Timeline() {
         </div>
 
         {/* Lanes */}
-        <div className="min-w-0 flex-1 overflow-x-auto">
+        <div ref={viewportRef} onScroll={measureViewport} className="min-w-0 flex-1 overflow-x-auto">
           <div style={{ position: "relative", width: laneWidth }}>
             {/* Ruler */}
             <div
@@ -271,7 +353,7 @@ export function Timeline() {
               ))}
             </div>
 
-            {Object.keys(timeline.clips).length === 0 && (
+            {isEmpty && (
               // Absolute so it overlays the lanes instead of pushing them
               // down — the track headers would stop lining up.
               <div
@@ -302,6 +384,9 @@ export function Timeline() {
                 trackId={trackId}
                 scale={scale}
                 laneWidth={laneWidth}
+                visibleWindow={visibleWindow}
+                pinnedClipIds={pinnedClipIds}
+                focusedConflictKey={focusedConflictKey}
                 assetDurations={assetDurations}
                 diagnosticsByClip={diagnosticsByClip}
                 authors={authors}

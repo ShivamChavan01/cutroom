@@ -3,6 +3,96 @@
 Measured numbers only. Anything not measured is labeled pending or retired —
 see the bottom section before citing a number from an old commit message.
 
+## Measured editor optimizations, 2026-10-25
+
+The comparison baseline is `c2209dfcf7f7a83dbdce9d4785ffd7040ad70c99`.
+The harness loads that revision's source independently from the working tree.
+Measurements below use five alternating runs per side on Node v24.17.0,
+with eight CPU cores and an initial load average of 1.18. These are local
+measurements on synthetic timelines, not portable latency guarantees.
+
+Reproduce the resolver and dispatch measurements from the repo root:
+
+```bash
+node scripts/measure-editor-performance.mjs --baseline c2209df \
+  --clips 20,1000,10000 --ticks 120 --history 100,1000 \
+  --output .gstack/performance-audit/comparison.json
+```
+
+The resolver test consumes every returned layer and checks clip IDs and
+source offsets against an independent oracle. The dispatch test checks its
+output against replay by the frozen baseline reducer. Both report errors
+and work counts. No mismatches occurred.
+
+| Workload | Original median, range in ms | Optimized median, range in ms |
+| --- | --- | --- |
+| Warm layer lookup, 20 clips across eight tracks | 0.0144, 0.0113 to 0.0169 | 0.0034, 0.0024 to 0.0045 |
+| Warm layer lookup, 1,000 clips | 0.3764, 0.3606 to 0.4638 | 0.0042, 0.0040 to 0.0050 |
+| Warm layer lookup, 10,000 clips | 35.1577, 33.2098 to 41.5150 | 0.0307, 0.0273 to 0.0491 |
+| First lookup on a fresh 10,000-clip revision | 33.0482, 30.1510 to 35.6743 | 4.6822, 4.3107 to 5.5193 |
+| Dispatch after 1,000 operations, 1,000 clips | 5.2688, 5.0678 to 6.6170 | 0.0734, 0.0423 to 0.1289 |
+
+The web cache groups and orders clips once per immutable clips record and
+calculates duration in the same pass. The separate CPU profile identifies
+repeated `clipsOnTrack` work as the old resolver's main cost. Warm lookup
+still scans each ordered track for the earliest active overlapping clip.
+A first lookup includes index construction. At 20 clips, cold timing ranges
+overlap, so no cold-start improvement is claimed there.
+
+Dispatch now applies the new operation to the current immutable snapshot.
+Undo, redo, restore and asset-base replacement retain canonical replay.
+Timeline and Inspector both supply that current snapshot to `authorsByClip`,
+which avoids another replay just to find surviving clip IDs.
+The bare-dispatch timing excludes React, subscribers, restore and history
+construction. Resolver timing excludes DOM layout and native video decoding.
+
+### Browser work and recovery
+
+The final production Chrome comparison applies 20 real inspector edits to
+a project with 1,000 clips and 1,000 prior operations. Every run checks that
+all 1,020 operations and the final transform were persisted. Five alternating
+runs per side had no errors. Chrome's `ScriptDuration` measures main-thread
+JavaScript across those edits, including store subscriptions, authorship,
+React rendering, field handlers and scheduling persistence:
+
+| Browser workload | Original median, range | Optimized median, range |
+| --- | --- | --- |
+| Main-thread JavaScript across 20 edits | 25,316 ms, 24,309 to 25,676 | 389 ms, 366 to 448 |
+| OPFS URL restoration for 200 small files | 504.1 ms, 403.7 to 567.5 | 247.1 ms, 232.2 to 288.0 |
+
+The inspector measurement caught a remaining full replay after the first
+history change. Passing its current snapshot removed that cost. The Chrome
+fixture references media metadata without decoding video during measurement.
+Automation wall times include Playwright and two animation-frame waits and
+are not used as a playback or input-latency claim.
+
+The OPFS comparison uses actual Chrome file handles and verifies the bytes
+behind every returned URL outside the timed interval. It excludes React,
+byte verification and video decoding. Recovery uses four concurrent reads
+and publishes one immutable URL-map update instead of 200 updates. For one
+file, both sides measured 1.9 ms, with overlapping 1.8 to 2.6 ms ranges.
+Missing files and rejected reads retain successful recoveries. Cancellation
+stops queued work and revokes unpublished URLs without revoking live media.
+
+In the 1,000-clip, eight-track fixture at 1440 by 900 pixels, the timeline
+mounts 104 clips initially and 88 at the end instead of all 1,000. Full lane
+geometry remains available to scroll. Selection, keyboard focus, pointer
+capture and focused merge controls can pin offscreen elements until the
+interaction ends. Ruler marks and merge/diff overlays use the same window.
+
+Real-media browser checks separately cover decoding, advancing playback,
+source handoff, refresh recovery, transforms, track controls, drag, trim,
+merge resolution and saved edits. Those checks establish behavior, not
+native playback FPS or decoder stall performance. The laptop geometry check
+allows 1/64 CSS pixel rounding after observing a 0.0078125 CSS pixel difference
+in a transformed frame's bounds. This is below a visible CSS pixel.
+
+Raw local evidence is in `.gstack/performance-audit/`: `comparison.json`,
+`lookup-baseline.cpuprofile`, `browser-edits-final.json`, `media-after.json`,
+`final-tests.log`, and the final browser verification artifacts. The local
+browser probes require Chrome and Playwright; their outputs are not included
+in the Git repository. The repeatable pure comparison is in `scripts/`.
+
 ## Measured: engine ops (dev machine, Node, `vitest bench`)
 
 `packages/engine/src/engine.bench.ts`. Medians of 3 back-to-back runs on

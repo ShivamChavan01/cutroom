@@ -28,11 +28,27 @@ own hard problems with working code instead of claims:
   Resizable panels, verification, a Review drawer, command palette,
   undo/redo, blame and activity sit alongside commits, branches, a visual
   commit graph, diffs and merge conflict resolution. The version rail can
-  fork a version while preserving current edits.
+  fork a version while preserving current edits. The graph marks shared tips,
+  merges and the viewed commit, with parent lines attached to their actual
+  endpoints and ancestry-safe ordering across branches.
+- **Detach audio**: select a video clip and use the timeline toolbar to
+  place its audio on a free, unlocked audio track (A1 when available).
+  Start time, source trim, duration and gain match; the video gain becomes
+  zero so sound plays once. One undo restores both. Busy tracks are left
+  intact, and a new audio track is created when needed. Audio and video
+  are independently editable after detaching; no ongoing edit link or
+  extracted audio file is created. Both refer to the original local media.
 - **Layered preview**: per-track double-buffered native video/audio,
   image layers and CSS transforms. Video tracks composite in track order;
   playback continues across cuts and gaps. Workspace track visibility,
   mute and locks persist locally; creative edits are versioned.
+- **Audio waveforms**: real decoded audio beneath video thumbnails and on
+  audio clips, aligned with source trims and splits. Drawing follows zoom,
+  viewport and clip volume; muted tracks dim the waveform. Peaks are
+  normalized per source for visibility, not a live level meter. Decoding
+  runs locally, one source at a time, with a shared cache. Sources above
+  128 MB or 20 minutes, or without decodable audio, show an unavailable
+  state; playback is independent. Waveforms regenerate after reload.
 - **Four export formats** (engine-side pure functions): `.otio`
   (OpenTimelineIO), `.fcpxml` (Final Cut Pro XML), `.edl` (CMX3600) and
   a lossless `.cutroom.json`. The export menu names the tools each one
@@ -100,7 +116,11 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-391 tests green (136 engine + 255 web), `tsc --noEmit` clean. Honest
+633 engine/web tests green (181 engine + 452 web/server), both TypeScript checks
+and the production build pass. The separate measurement harness is checked with
+Vitest (16 passing tests; 649 total across the three runs).
+The [Day 1 correctness report](DAY1-REPORT.md) records reproductions,
+browser evidence, merge policies and remaining persistence limitations. Honest
 accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
 (research notes), and PERF.md.
 
@@ -135,11 +155,76 @@ graphics, fullscreen, project settings, version creation, download and
 refresh recovery. Use the same environment variables plus
 `TEST_GRAPHIC=/path/to/image.jpg`.
 
+`scripts/verify-waveforms.mjs` checks both AAC video sources, source offsets
+after trim/split, playback, audio-lane waveforms, mute styling and reload.
+Set `TEST_VIDEO_A` and `TEST_VIDEO_B` to the two demo MP4s, plus `TEST_AUDIO`
+to a two-second WAV with silence in the first/last half-second and a tone
+between them. It uses the same `EDITOR_URL`, `PLAYWRIGHT_MODULE` and
+`QA_OUTPUT_DIR` options. The test awaits actual persisted data before reload.
+
 ## What it saves, and where
 
 Project metadata (op log, undo cursor, commits, branches, HEAD state) goes
 to IndexedDB; uploaded media goes to OPFS keyed by its content hash, so a
 clip still plays after a refresh. Both are one browser, one project — no
-server, no sync, no sharing, and nothing encrypted. If the browser has no
+project sync or sharing, and nothing encrypted. If the browser has no
 private file system the app says so in the status bar rather than losing
 your work quietly.
+
+## AI verification assistant
+
+Open **Issues → Explain issues with AI**, or **Assistant** in the sidebar.
+The assistant explains structural findings and proposes edits. Each proposal
+shows the clip changes and the findings it would resolve or introduce.
+Nothing changes until you apply it. Applied operations use the existing
+history and version workflow; Undo reverses one operation at a time.
+Changed timelines invalidate previews, and track locks are checked again
+when applying. Finish or cancel a merge before using the assistant.
+
+Configure the key on this computer:
+
+```sh
+cp apps/web/.env.example apps/web/.env.local
+# Edit .env.local: set GROQ_API_KEY, then restart Vite.
+# The template selects AI_PROVIDER=groq and GROQ_MODEL=openai/gpt-oss-120b.
+# Alternatively select AI_PROVIDER=openai and set OPENAI_API_KEY / OPENAI_MODEL.
+```
+
+Groq uses Chat Completions with a [strict JSON schema](https://console.groq.com/docs/structured-outputs).
+GPT-OSS 120B is the default; choose another model supporting strict schema
+output and the configured reasoning effort with `GROQ_MODEL`.
+The optional [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)
+adapter uses `store: false`. Keys stay on the server; never use a `VITE_` prefix for
+secrets. The request sends the prompt, timeline metadata (including asset
+names) and verification findings. It sends no media bytes. This is structural
+verification: the assistant cannot watch footage, hear dialogue, transcribe,
+dub or generate missing media. Usage is billed to your configured provider
+account. The panel reads the active provider from the local server and names
+it in the data disclosure; configuration responses contain no credentials.
+
+The endpoint works in Vite development and local `vite preview` after a build.
+It accepts only local connections through `localhost`/`127.0.0.1`/`[::1]`,
+checks request origins, limits request size and concurrent calls, and times
+out upstream calls after 60 seconds. A static host alone cannot run this API;
+public hosting needs a server with authentication and per-user credentials
+or billing limits.
+
+Supported proposals: move, trim, split, delete, volume and transform changes
+to existing clips, up to 50 operations on timelines up to 1,000 clips.
+Explanation-only responses are supported. New findings remain visible for
+review; a proposal is not a guarantee that a cut looks or sounds right.
+
+Server and client boundary tests use controlled provider responses. Reproduce
+the browser workflow against the development server with a real demo video:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+TEST_VIDEO_A=/path/to/demo.mp4 node scripts/verify-assistant.mjs
+```
+
+This browser check substitutes the remote response and exercises the real
+engine, preview, stale checks, apply, undo/redo, persistence, locks and cancel.
+Live Groq checks with GPT-OSS 120B passed for a gap fix, locked-track
+explanation and explanation-only request. The real gap proposal passed the
+engine preview, apply, undo/redo and reload checks. These three cases are a
+smoke test, not a broad model-quality benchmark. Live OpenAI remains unverified.

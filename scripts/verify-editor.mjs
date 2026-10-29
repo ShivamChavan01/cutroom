@@ -49,6 +49,16 @@ async function decoded(page) {
 }
 
 async function fittedLayout(page) {
+  await page.waitForFunction(() => {
+    const video = [...document.querySelectorAll("video")].find((item) => getComputedStyle(item).display !== "none");
+    const preview = document.querySelector(".preview-player");
+    if (!video || !preview) return false;
+    const bounds = preview.getBoundingClientRect();
+    const frame = video.getBoundingClientRect();
+    const epsilon = 1 / 64;
+    return frame.height > 0 && frame.top >= bounds.top - epsilon && frame.bottom <= bounds.bottom + epsilon
+      && frame.left >= bounds.left - epsilon && frame.right <= bounds.right + epsilon;
+  });
   const layout = await page.evaluate(() => {
     const video = [...document.querySelectorAll("video")].find((item) => getComputedStyle(item).display !== "none");
     const preview = document.querySelector(".preview-player");
@@ -59,8 +69,10 @@ async function fittedLayout(page) {
     const bounds = preview.getBoundingClientRect();
     const frame = video.getBoundingClientRect();
     const sideBounds = side.getBoundingClientRect();
+    // Transformed frame bounds differed by 0.0078125 CSS px at laptop width.
+    const epsilon = 1 / 64;
     return {
-      frameFits: frame.height > 0 && frame.top >= bounds.top && frame.bottom <= bounds.bottom && frame.left >= bounds.left && frame.right <= bounds.right,
+      frameFits: frame.height > 0 && frame.top >= bounds.top - epsilon && frame.bottom <= bounds.bottom + epsilon && frame.left >= bounds.left - epsilon && frame.right <= bounds.right + epsilon,
       objectFit: getComputedStyle(video).objectFit,
       fullWidthSequence: sequence.getBoundingClientRect().width >= workspace.getBoundingClientRect().width - 2,
       sequenceBelowMonitor: sequence.getBoundingClientRect().top >= bounds.bottom,

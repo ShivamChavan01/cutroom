@@ -51,31 +51,35 @@ export interface CommitGraph {
 
 /** Commits ordered newest-first, parents always after their children. */
 export function orderCommits(commits: Readonly<Record<string, Commit>>): Commit[] {
-  const children = new Map<string, string[]>();
+  const remainingChildren = new Map<string, number>();
   for (const commit of Object.values(commits)) {
-    for (const parent of commit.parents) {
-      const list = children.get(parent) ?? [];
-      list.push(commit.id);
-      children.set(parent, list);
+    remainingChildren.set(commit.id, 0);
+  }
+  for (const commit of Object.values(commits)) {
+    for (const parent of new Set(commit.parents)) {
+      if (commits[parent] === undefined) continue;
+      remainingChildren.set(parent, (remainingChildren.get(parent) ?? 0) + 1);
     }
   }
-  const roots = Object.values(commits)
-    .filter((commit) => commit.parents.length === 0)
-    .map((commit) => commit.id);
-
+  const ready = Object.values(commits).filter((commit) => remainingChildren.get(commit.id) === 0);
   const ordered: Commit[] = [];
-  const seen = new Set<string>();
-  const visit = (id: string): void => {
-    if (seen.has(id)) return;
-    seen.add(id);
-    // Children first, so the newest commit ends up at the top.
-    for (const child of children.get(id) ?? []) visit(child);
-    const commit = commits[id];
-    if (commit !== undefined) ordered.push(commit);
-  };
-  for (const root of roots) visit(root);
-  // Commits whose parents are missing (pruned history) still need a row.
-  for (const id of Object.keys(commits)) visit(id);
+  while (ready.length > 0) {
+    // Timestamp only breaks ties between available tips; ancestry always wins.
+    ready.sort((a, b) => b.at - a.at || a.id.localeCompare(b.id, undefined, { numeric: true }));
+    const next = ready.shift();
+    if (next === undefined) break;
+    ordered.push(next);
+    for (const parent of new Set(next.parents)) {
+      if (commits[parent] === undefined) continue;
+      const count = (remainingChildren.get(parent) ?? 0) - 1;
+      remainingChildren.set(parent, count);
+      const commit = commits[parent];
+      if (count === 0 && commit !== undefined) ready.push(commit);
+    }
+  }
+  if (ordered.length !== Object.keys(commits).length) {
+    throw new Error("Commit history contains a cycle.");
+  }
   return ordered;
 }
 
@@ -90,7 +94,7 @@ export function buildCommitGraph(repo: Repo): CommitGraph {
     const chain: string[] = [];
     let current: string | undefined = startId;
     let forkPoint: string | undefined;
-    while (current !== undefined && !laneOf.has(current)) {
+    while (current !== undefined && commits[current] !== undefined && !laneOf.has(current)) {
       chain.push(current);
       const parent: Commit | undefined = commits[current];
       current = parent?.parents[0];
@@ -151,6 +155,7 @@ export function buildCommitGraph(repo: Repo): CommitGraph {
   const edges: GraphEdge[] = [];
   for (const commit of ordered) {
     for (const parentId of commit.parents) {
+      if (commits[parentId] === undefined) continue;
       const branch = branchOfEdge.get(`${commit.id}->${parentId}`);
       edges.push(
         branch === undefined

@@ -1,10 +1,5 @@
-import type {
-  Clip,
-  Conflict,
-  MergeResult,
-  Millis,
-  Timeline,
-} from "@cutroom/engine";
+import { conflictKey, type Clip, type Conflict, type MergeResult, type Millis, type Timeline } from "@cutroom/engine";
+
 
 /**
  * A pending merge's conflicts to in-place timeline visuals, as a pure
@@ -16,7 +11,7 @@ import type {
  */
 
 export interface ConflictBand {
-  /** Stable across re-derivation: index, kind, principal clip id. */
+  /** Stable semantic identity, independent of list index. */
   readonly key: string;
   readonly conflict: Conflict;
   readonly index: number;
@@ -54,6 +49,11 @@ interface BandParts {
 
 function bandParts(conflict: Conflict, merged: Timeline): BandParts | null {
   switch (conflict.kind) {
+    case "assetField":
+    case "trackField":
+    case "assetPresence":
+    case "trackPresence":
+    case "trackOrder":
     case "project":
       return null;
     case "field": {
@@ -126,7 +126,7 @@ export function conflictsToVisuals(
     bands.set(parts.trackId, [
       ...bandList,
       {
-        key: `${index}:${conflict.kind}:${parts.principalId}`,
+        key: conflictKey(conflict),
         conflict,
         index,
         trackId: parts.trackId,

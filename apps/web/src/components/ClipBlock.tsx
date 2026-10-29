@@ -13,6 +13,8 @@ import { useEditorStore } from "../store";
 import { useMediaPosters } from "../lib/media/poster";
 import { useAssetUrls } from "../lib/assets";
 import { useUiStore } from "../uiStore";
+import { ClipWaveform } from "./ClipWaveform";
+import type { TimelineWindow } from "../lib/timelineViewport";
 
 export const DIFF_BORDER: Record<DiffTint, string> = {
   added: "#51cf66",
@@ -37,6 +39,7 @@ interface ClipBlockProps {
   readonly ghost?: boolean;
   /** Conflict ghosts: crimson + ⚠, shown instead of the removed-ghost style. */
   readonly ghostVariant?: "conflict";
+  readonly visibleWindow?: TimelineWindow;
 }
 
 /**
@@ -54,6 +57,7 @@ export const ClipBlock = memo(function ClipBlock({
   diffBadge,
   ghost = false,
   ghostVariant,
+  visibleWindow,
 }: ClipBlockProps) {
   const selected = useEditorStore((state) => state.selectedClipId === clip.id);
   const poster = useMediaPosters((posters) => posters.get(clip.assetId));
@@ -208,6 +212,7 @@ export const ClipBlock = memo(function ClipBlock({
     <div
       role="button"
       className="studio-clip"
+      data-clip-id={clip.id}
       tabIndex={0}
       aria-label={`clip ${clip.id}`}
       title={titleLines.join("\n") || clip.id}
@@ -274,6 +279,11 @@ export const ClipBlock = memo(function ClipBlock({
       {(poster ?? imageUrl) !== undefined && !clip.trackId.startsWith("a") && (
         <div className="clip-filmstrip" aria-hidden style={{ backgroundImage: `url("${poster ?? imageUrl}")` }} />
       )}
+      {!ghost && asset !== undefined && asset.kind !== "image" && <ClipWaveform
+        asset={asset} trackId={clip.trackId} start={shownStart + moveDelta}
+        inPoint={clip.inPoint + (dragSideRef.current === "left" ? dragDxMs ?? 0 : 0)}
+        duration={shownDuration} volume={clip.volume} pxPerSecond={scale.pxPerSecond} visibleWindow={visibleWindow}
+      />}
       <div className="clip-caption">
       {(hasError || hasWarning) && (
         <span style={{ marginRight: 4 }}>{hasError ? "●" : "○"}</span>

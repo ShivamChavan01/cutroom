@@ -1,5 +1,5 @@
+import { mergeMetadata, metadataConflictKey, type MetadataConflict } from "./metadataMerge";
 import {
-  type Asset,
   type Clip,
   type Millis,
   type Timeline,
@@ -76,7 +76,7 @@ export interface ProjectConflict {
   readonly theirs: string | number;
 }
 
-export type Conflict = FieldConflict | OverlapConflict | DeleteModifyConflict | ProjectConflict;
+export type Conflict = FieldConflict | OverlapConflict | DeleteModifyConflict | ProjectConflict | MetadataConflict;
 
 export interface MergeResult {
   readonly merged: Timeline;
@@ -92,7 +92,8 @@ export interface MergeOptions {
   /**
    * Cap on reported overlap conflicts. A cascading overlap can produce hundreds
    * of pairs; the UI shows a capped list and the full picture is on the
-   * timeline itself.
+   * timeline itself. Must be a positive safe integer so any remaining
+   * overlap still blocks a clean result.
    */
   readonly maxOverlapConflicts?: number;
 }
@@ -287,31 +288,32 @@ function overlapPass(
   return conflicts;
 }
 
-function mergeAsset(base: Asset | undefined, ours: Asset, theirs: Asset): Asset {
-  const merged = { ...ours };
-  const fields = ["kind", "duration", "width", "height", "bytes", "proxyId", "name", "mimeType"] as const;
-  if (base !== undefined) {
-    for (const field of fields) {
-      if (ours[field] === base[field]) Object.assign(merged, { [field]: theirs[field] });
-    }
+function overlapLimit(options: MergeOptions): number {
+  const limit = options.maxOverlapConflicts ?? 200;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError("maxOverlapConflicts must be a positive safe integer.");
   }
-  if (base?.tags !== undefined || ours.tags !== undefined || theirs.tags !== undefined) {
-    const baseTags = new Set(base?.tags ?? []);
-    const ourTags = new Set(ours.tags ?? []);
-    const theirTags = new Set(theirs.tags ?? []);
-    merged.tags = [...new Set([...ourTags, ...theirTags, ...baseTags])].filter((tag) =>
-      ourTags.has(tag) === baseTags.has(tag) ? theirTags.has(tag) : ourTags.has(tag));
-  }
-  return merged;
+  return limit;
 }
 
-function mergeAssets(base: Timeline, ours: Timeline, theirs: Timeline): Timeline["assets"] {
-  const assets = { ...theirs.assets, ...ours.assets };
-  for (const [id, ourAsset] of Object.entries(ours.assets)) {
-    const theirAsset = theirs.assets[id];
-    if (theirAsset !== undefined) assets[id] = mergeAsset(base.assets[id], ourAsset, theirAsset);
-  }
-  return assets;
+/** Rebuild geometric conflicts after a resolution, preserving remaining choices. */
+export function refreshMergeConflicts(result: MergeResult, options: MergeOptions = {}): MergeResult {
+  const trackIds = new Set(result.merged.tracks.map(track => track.id));
+  const remaining = result.conflicts.filter((conflict) => {
+    if (conflict.kind === "overlap") return false;
+    if (conflict.kind === "field" || conflict.kind === "deleteModify") {
+      return result.merged.clips[conflict.clipId] !== undefined;
+    }
+    if (conflict.kind === "trackOrder") {
+      // Deleting a disputed layer can make the two remaining orders converge.
+      const ours = conflict.ours.filter(id => trackIds.has(id));
+      const theirs = conflict.theirs.filter(id => trackIds.has(id));
+      return ours.length !== theirs.length || ours.some((id, i) => id !== theirs[i]);
+    }
+    return true;
+  });
+  const conflicts = [...remaining, ...overlapPass(result.merged.clips, result.merged.tracks, overlapLimit(options))];
+  return { ...result, conflicts, clean: conflicts.length === 0 };
 }
 
 /**
@@ -324,22 +326,16 @@ export function mergeTimelines(
   theirs: Timeline,
   options: MergeOptions = {},
 ): MergeResult {
-  const maxOverlapConflicts = options.maxOverlapConflicts ?? 200;
+  const maxOverlapConflicts = overlapLimit(options);
   const conflicts: Conflict[] = [];
   const takenFromTheirs: string[] = [];
   const deleted: string[] = [];
 
   const clips = mergePass(base, ours, theirs, conflicts, takenFromTheirs, deleted);
-  const tracks = [...ours.tracks];
-  const trackIds = new Set(tracks.map((track) => track.id));
-  for (const track of theirs.tracks) {
-    if (!trackIds.has(track.id)) {
-      tracks.push(track);
-      trackIds.add(track.id);
-    }
-  }
-  conflicts.push(...overlapPass(clips, tracks, maxOverlapConflicts));
-  const merged: Timeline = { ...ours, clips, tracks, assets: mergeAssets(base, ours, theirs) };
+  const metadata = mergeMetadata(base, ours, theirs, clips, conflicts);
+  const { tracks, assets } = metadata;
+  conflicts.push(...metadata.conflicts, ...overlapPass(clips, tracks, maxOverlapConflicts));
+  const merged: Timeline = { ...ours, clips, tracks, assets };
   const id = mergeProjectValue("id", base.id, ours.id, theirs.id, conflicts);
   const fps = mergeProjectValue("fps", base.fps ?? 30, ours.fps ?? 30, theirs.fps ?? 30, conflicts);
 
@@ -369,7 +365,7 @@ export function resolveProject(result: MergeResult, field: "id" | "fps", choice:
       ? { ...result.merged, fps: value }
       : result.merged;
   const conflicts = result.conflicts.filter((item) => !(item.kind === "project" && item.field === field));
-  return { ...result, merged, conflicts, clean: conflicts.length === 0 };
+  return refreshMergeConflicts({ ...result, merged, conflicts });
 }
 
 /**
@@ -397,15 +393,13 @@ export function resolveField(
   };
   const clips = { ...result.merged.clips, [clipId]: next };
   const remaining = result.conflicts.filter(
-    (c) => c.kind !== "overlap" && !(c.kind === "field" && c.clipId === clipId && c.field === field),
+    (c) => !(c.kind === "field" && c.clipId === clipId && c.field === field),
   );
-  const conflicts = [...remaining, ...overlapPass(clips, result.merged.tracks, 200)];
-  return {
+  return refreshMergeConflicts({
     ...result,
     merged: { ...result.merged, clips },
-    conflicts,
-    clean: conflicts.length === 0,
-  };
+    conflicts: remaining,
+  });
 }
 
 /** Merge-order-independent view of whether a track is currently self-consistent. */
@@ -422,4 +416,15 @@ export function overlappingPairs(timeline: Timeline): readonly [string, string][
     }
   }
   return pairs;
+}
+
+/** Geometry identity is the track and unordered clip pair, never list index. */
+export function conflictKey(conflict: Conflict): string {
+  switch (conflict.kind) {
+    case "field": return JSON.stringify([conflict.kind, conflict.clipId, conflict.field]);
+    case "deleteModify": return JSON.stringify([conflict.kind, conflict.clipId]);
+    case "overlap": return JSON.stringify([conflict.kind, conflict.trackId, ...[conflict.a, conflict.b].sort()]);
+    case "project": return JSON.stringify([conflict.kind, conflict.field]);
+    default: return metadataConflictKey(conflict);
+  }
 }

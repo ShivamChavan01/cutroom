@@ -51,7 +51,7 @@ describe("studio chrome", () => {
 
   it("labels all library tabs and marks the active one", () => {
     const html = renderToStaticMarkup(<ActivityBar />);
-    for (const label of ["Media", "Versions", "Issues"]) expect(html).toContain(`aria-label="${label}"`);
+    for (const label of ["Media", "Versions", "Issues", "Assistant"]) expect(html).toContain(`aria-label="${label}"`);
     expect(html).toContain('aria-current="page"');
     expect(html).toContain(">Media</span>");
   });

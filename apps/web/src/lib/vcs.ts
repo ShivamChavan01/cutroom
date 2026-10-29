@@ -1,7 +1,8 @@
 import {
-  type Conflict,
   type MergeResult,
   type Timeline,
+  overlaps,
+  refreshMergeConflicts,
 } from "@cutroom/engine";
 
 /**
@@ -88,7 +89,9 @@ export function viewCommit(repo: Repo, commitId: string): Repo {
 }
 
 function nextId(repo: Repo): string {
-  return `c${Object.keys(repo.commits).length}`;
+  let sequence = Object.keys(repo.commits).length;
+  while (Object.hasOwn(repo.commits, `c${sequence}`)) sequence += 1;
+  return `c${sequence}`;
 }
 
 function withCommit(repo: Repo, commit: Commit, moveBranch?: string): Repo {
@@ -140,14 +143,14 @@ export function checkout(repo: Repo, name: string): Repo {
   return { ...repo, currentBranch: name, detachedAt: null };
 }
 
-/** All ancestors of a commit, inclusive, newest-first by BFS depth. */
+/** All reachable ancestor ids, inclusive, in breadth-first order. */
 export function ancestors(repo: Repo, id: string): string[] {
   const seen = new Set<string>();
   const queue = [id];
   const out: string[] = [];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (seen.has(current)) continue;
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const current = queue[cursor];
+    if (current === undefined || seen.has(current)) continue;
     seen.add(current);
     out.push(current);
     const commit = repo.commits[current];
@@ -156,13 +159,49 @@ export function ancestors(repo: Repo, id: string): string[] {
   return out;
 }
 
-/** Nearest common ancestor of two heads, or null on unrelated histories. */
-export function findMergeBase(repo: Repo, a: string, b: string): Commit | null {
-  const ancestorsOfA = new Set(ancestors(repo, a));
-  for (const id of ancestors(repo, b)) {
-    if (ancestorsOfA.has(id)) return repo.commits[id] ?? null;
+/** Common ancestors that have no newer common descendant. */
+export function findMergeBases(repo: Repo, a: string, b: string): Commit[] {
+  const ancestorsOfA = new Set(ancestors(repo, a).filter((id) => repo.commits[id] !== undefined));
+  const ancestorsOfB = new Set(ancestors(repo, b).filter((id) => repo.commits[id] !== undefined));
+  const reachable = new Set([...ancestorsOfA, ...ancestorsOfB]);
+  const common = new Set([...ancestorsOfA].filter((id) => ancestorsOfB.has(id)));
+  const remainingChildren = new Map([...reachable].map((id) => [id, 0]));
+  for (const id of reachable) {
+    for (const parent of new Set(repo.commits[id]?.parents ?? [])) {
+      if (reachable.has(parent)) remainingChildren.set(parent, (remainingChildren.get(parent) ?? 0) + 1);
+    }
   }
-  return null;
+  const ready = [...reachable].filter((id) => remainingChildren.get(id) === 0);
+  const dominated = new Set<string>();
+  for (let cursor = 0; cursor < ready.length; cursor++) {
+    const id = ready[cursor];
+    if (id === undefined) continue;
+    // Process children before parents so ancestry, rather than BFS depth or
+    // timestamp, decides which common ancestors are superseded.
+    for (const parent of new Set(repo.commits[id]?.parents ?? [])) {
+      if (!reachable.has(parent)) continue;
+      if (common.has(id) || dominated.has(id)) dominated.add(parent);
+      const remaining = (remainingChildren.get(parent) ?? 0) - 1;
+      remainingChildren.set(parent, remaining);
+      if (remaining === 0) ready.push(parent);
+    }
+  }
+  if (ready.length !== reachable.size) throw new Error("vcs: commit history contains a cycle");
+  const bases: Commit[] = [];
+  for (const id of [...common].sort()) {
+    const commit = repo.commits[id];
+    if (!dominated.has(id) && commit !== undefined) bases.push(commit);
+  }
+  return bases;
+}
+
+/** A unique best common ancestor; ambiguous criss-cross merges fail closed. */
+export function findMergeBase(repo: Repo, a: string, b: string): Commit | null {
+  const bases = findMergeBases(repo, a, b);
+  if (bases.length > 1) {
+    throw new Error(`vcs: multiple merge bases (${bases.map((base) => base.id).join(", ")}); criss-cross merges are not supported yet`);
+  }
+  return bases[0] ?? null;
 }
 
 /** First-parent chain for display: the branch's own story, not merged-in side lines. */
@@ -192,21 +231,12 @@ export function resolveDeleteModify(
   clipId: string,
   keep: boolean,
 ): MergeResult {
+  const conflict = result.conflicts.find((item) => item.kind === "deleteModify" && item.clipId === clipId);
+  if (conflict === undefined) return result;
   const clips = { ...result.merged.clips };
   if (!keep) delete clips[clipId];
-  const conflicts: Conflict[] = result.conflicts.filter(
-    (c) =>
-      !(
-        (c.kind === "deleteModify" && c.clipId === clipId) ||
-        (!keep && c.kind === "field" && c.clipId === clipId)
-      ),
-  );
-  return {
-    ...result,
-    merged: { ...result.merged, clips },
-    conflicts,
-    clean: conflicts.length === 0,
-  };
+  const conflicts = result.conflicts.filter((item) => !(item.kind === "deleteModify" && item.clipId === clipId));
+  return refreshMergeConflicts({ ...result, merged: { ...result.merged, clips }, conflicts });
 }
 
 /**
@@ -218,24 +248,15 @@ export function resolveOverlap(
   keepId: string,
   dropId: string,
 ): MergeResult {
+  const conflict = result.conflicts.find((item) => item.kind === "overlap" &&
+    ((item.a === keepId && item.b === dropId) || (item.a === dropId && item.b === keepId)));
+  if (conflict === undefined || keepId === dropId) return result;
+  const keeper = result.merged.clips[keepId];
+  const dropped = result.merged.clips[dropId];
+  if (keeper === undefined || dropped === undefined || keeper.trackId !== dropped.trackId || !overlaps(keeper, dropped)) {
+    return refreshMergeConflicts(result);
+  }
   const clips = { ...result.merged.clips };
   delete clips[dropId];
-  const conflicts: Conflict[] = result.conflicts.filter((c) => {
-    if (c.kind === "overlap") {
-      return !(
-        (c.a === keepId && c.b === dropId) ||
-        (c.a === dropId && c.b === keepId)
-      );
-    }
-    if (c.kind === "field" || c.kind === "deleteModify") {
-      return c.clipId !== dropId;
-    }
-    return true;
-  });
-  return {
-    ...result,
-    merged: { ...result.merged, clips },
-    conflicts,
-    clean: conflicts.length === 0,
-  };
+  return refreshMergeConflicts({ ...result, merged: { ...result.merged, clips } });
 }

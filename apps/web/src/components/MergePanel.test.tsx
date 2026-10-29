@@ -43,7 +43,7 @@ describe("merge panel", () => {
         repo,
         pending: {
           sourceBranch: "alternate",
-          baseId: "c0",
+          baseId: "c0", workingTimeline: useEditorStore.getState().timeline, oursId: "c0", theirsId: "c0",
           result: mergeTimelines(timeline, timeline, timeline),
         },
       });
@@ -61,7 +61,7 @@ describe("merge panel", () => {
     const base = useEditorStore.getState().timeline;
     useVcsStore.setState({ pending: {
       sourceBranch: "alternate",
-      baseId: "c0",
+      baseId: "c0", workingTimeline: useEditorStore.getState().timeline, oursId: "c0", theirsId: "c0",
       result: mergeTimelines(base, { ...base, fps: 25 }, { ...base, fps: 24 }),
     } });
     expect(renderedText()).toContain("Project fps: 25 / 24");
@@ -69,3 +69,13 @@ describe("merge panel", () => {
     expect(renderedText()).toContain("Take theirs");
   });
 });
+
+ it("shows every metadata resolution kind without inventing timeline bands", () => {
+  const base = { ...emptyTimeline(), assets: { media: { id: "media", kind: "video" as const, duration: 1000, name: "base" } } };
+  const ours = { ...base, assets: { media: { ...base.assets.media, name: "ours" } }, tracks: base.tracks.map(t => ({ ...t, name: "ours" })) };
+  const theirs = { ...base, assets: { media: { ...base.assets.media, name: "theirs" } }, tracks: base.tracks.map(t => ({ ...t, name: "theirs" })) };
+  useVcsStore.setState({ pending: { sourceBranch: "alternate", baseId: "c0", workingTimeline: ours, oursId: "c0", theirsId: "c0", result: mergeTimelines(base, ours, theirs) } });
+  expect(renderedText()).toContain("Asset media.name");
+  expect(renderedText()).toContain("Track v1.name");
+  expect(renderedText()).toContain("Take theirs");
+ });
