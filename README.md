@@ -6,7 +6,7 @@ own hard problems with working code instead of claims:
 1. **Version Control** — "Code has git. Video has nothing."
 2. **Verification** — "There's no linter for video. We have to build one."
 
-[Try the hosted editor](https://cutroom-shivamchavan01s-projects.vercel.app/).
+[Try the hosted editor](https://cutroom-editor.vercel.app/).
 Import your own footage; project data and media stay in your browser.
 The hosted demo includes timeline editing, version control and verification.
 The AI assistant currently requires the local server and is unavailable on
