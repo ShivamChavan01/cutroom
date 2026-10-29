@@ -4,7 +4,7 @@ import { assistantContext, parsePlan, previewPlan } from "./proposal";
 export async function assistantConfiguration(signal: AbortSignal, fetcher: typeof fetch = fetch) {
   const response = await fetcher("/api/assistant/config", { signal });
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok || typeof body !== "object" || body === null || !("provider" in body) || (body.provider !== "Groq" && body.provider !== "OpenAI") || !("model" in body) || typeof body.model !== "string" || !("configured" in body) || typeof body.configured !== "boolean" || ("accessRequired" in body && typeof body.accessRequired !== "boolean")) {
+  if (!response.ok || typeof body !== "object" || body === null || !("provider" in body) || (body.provider !== "Groq" && body.provider !== "OpenAI" && body.provider !== "River") || !("model" in body) || typeof body.model !== "string" || !("configured" in body) || typeof body.configured !== "boolean" || ("accessRequired" in body && typeof body.accessRequired !== "boolean")) {
     throw new Error("Could not read the AI provider configuration. Check the server deployment.");
   }
   return { provider: body.provider, model: body.model, configured: body.configured, accessRequired: "accessRequired" in body && body.accessRequired === true };

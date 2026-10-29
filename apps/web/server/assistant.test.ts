@@ -25,6 +25,55 @@ const response = (text: string) => new Response(JSON.stringify({ status: "comple
 const post = { method: "POST", headers: { "Content-Type": "application/json" }, body };
 
 describe("OpenAI server boundary", () => {
+  it.each([[undefined, "legacy-secret"], ["", "legacy-secret"], ["river-secret", "river-secret"]])("supports the existing River MODEL_API secret while preferring RIVER_API_KEY (%s)", async (key, expected) => {
+    const upstream = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"summary":"No edits","ops":[]}' } }] }));
+    const app = await server({ AI_PROVIDER: "river", MODEL_API: "legacy-secret", ...(key === undefined ? {} : { RIVER_API_KEY: key }) }, upstream);
+    expect((await fetch(app.url, post)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[1]?.headers).toEqual(expect.objectContaining({ Authorization: `Bearer ${expected}` }));
+  });
+  it.each(["groq", "openai"])("never uses the River MODEL_API credential for %s", async (provider) => {
+    const app = await server({ AI_PROVIDER: provider, MODEL_API: "legacy-secret", OPENAI_MODEL: "test-model" });
+    expect((await fetch(app.url, post)).status).toBe(503);
+    expect(app.upstream).not.toHaveBeenCalled();
+  });
+  it.each([[undefined, "low"], ["zai-org/GLM-5.3-Flash", "low"], ["moonshotai/Kimi-K3", "none"], ["nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "none"]])("routes River using its documented token budget, reasoning and schema (%s)", async (model, effort) => {
+    const upstream = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { reasoning_content: "Private reasoning", content: JSON.stringify({ summary: "Close gap", ops: [{ type: "moveClip", clipId: "c", start: 0, trackId: null }] }) } }] })));
+    const app = await server({ AI_PROVIDER: "river", RIVER_API_KEY: "river-secret", ...(model ? { RIVER_MODEL: model } : {}), GROQ_API_KEY: "unrelated-secret" }, upstream);
+    const result = await fetch(app.url, post);
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ summary: "Close gap", ops: [{ type: "moveClip", clipId: "c", start: 0 }] });
+    expect(upstream.mock.calls[0]?.[0]).toBe("https://api.river.ai/v1/chat/completions");
+    const init = upstream.mock.calls[0]?.[1];
+    expect(init?.headers).toEqual(expect.objectContaining({ Authorization: "Bearer river-secret" }));
+    const sent = JSON.parse(String(init?.body));
+    expect(sent).toMatchObject({ model: model ?? "deepseek-ai/DeepSeek-V4.1-Flash-1017", max_tokens: 5000, reasoning_effort: effort, response_format: { type: "json_schema", json_schema: { strict: true } } });
+    expect(sent).not.toHaveProperty("max_completion_tokens");
+    expect(String(init?.body)).not.toContain("unrelated-secret");
+    const config = await fetch(app.url.replace("propose", "config"));
+    expect(await config.json()).toEqual({ provider: "River", model: model ?? "deepseek-ai/DeepSeek-V4.1-Flash-1017", configured: true });
+  });
+  it("reports missing River credentials without contacting any provider", async () => {
+    const app = await server({ AI_PROVIDER: "river" });
+    const result = await fetch(app.url, post);
+    expect(result.status).toBe(503);
+    expect(await result.text()).toContain("RIVER_API_KEY");
+    expect(app.upstream).not.toHaveBeenCalled();
+  });
+  it.each([401, 429, 500])("redacts River upstream failures (%s)", async (status) => {
+    const app = await server({ AI_PROVIDER: "river", RIVER_API_KEY: "river-secret" }, vi.fn<typeof fetch>().mockResolvedValue(new Response("sensitive provider error", { status })));
+    const result = await fetch(app.url, post);
+    expect(result.status).toBe(502);
+    const error = await result.text();
+    expect(error).toContain("River");
+    expect(error).not.toContain("river-secret");
+    expect(error).not.toContain("sensitive provider error");
+  });
+  it("rejects incomplete River output instead of treating it as a proposal", async () => {
+    const app = await server({ AI_PROVIDER: "river", RIVER_API_KEY: "river-secret" }, vi.fn<typeof fetch>().mockResolvedValue(Response.json({ choices: [{ finish_reason: "length", message: { content: "{}" } }] })));
+    const result = await fetch(app.url, post);
+    expect(result.status).toBe(502);
+    expect(await result.text()).toContain("River did not complete");
+  });
   it("routes Groq with its own key and strict schema, then normalizes optional fields", async () => {
     const upstream = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: "Close gap", ops: [{ type: "moveClip", clipId: "c", start: 0, trackId: null }] }) } }] })));
     const app = await server({ AI_PROVIDER: "groq", GROQ_API_KEY: "groq-secret", OPENAI_API_KEY: "unrelated-secret" }, upstream);

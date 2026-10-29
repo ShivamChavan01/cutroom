@@ -200,11 +200,25 @@ cp apps/web/.env.example apps/web/.env.local
 # Edit .env.local: set GROQ_API_KEY, then restart Vite.
 # The template selects AI_PROVIDER=groq and GROQ_MODEL=openai/gpt-oss-120b.
 # Alternatively select AI_PROVIDER=openai and set OPENAI_API_KEY / OPENAI_MODEL.
+# For River select AI_PROVIDER=river and set RIVER_API_KEY / RIVER_MODEL.
 ```
 
 Groq uses Chat Completions with a [strict JSON schema](https://console.groq.com/docs/structured-outputs).
 GPT-OSS 120B is the default; choose another model supporting strict schema
 output and the configured reasoning effort with `GROQ_MODEL`.
+River is also supported through its [Chat Completions API](https://docs.river.ai/guides/inference/)
+with strict JSON schema output. Set `AI_PROVIDER=river` and `RIVER_API_KEY`;
+`RIVER_MODEL` defaults to `deepseek-ai/DeepSeek-V4.1-Flash-1017`.
+The existing Vercel `MODEL_API` secret is also accepted for River if
+`RIVER_API_KEY` is empty; it is never used for Groq or OpenAI.
+`zai-org/GLM-5.3-Flash` is an alternative to evaluate. The adapter requests
+low reasoning where supported, and disables reasoning for Kimi-K3/Nemotron,
+which do not accept `low`. It uses River's `max_tokens` parameter, and rejects
+truncated or refused answers before previewing a proposal. Boundary tests use
+controlled responses. A live River smoke check on 2026-10-30 passed a move
+proposal with preview/apply/undo/redo/refresh, explanation-only output, and
+locked-track refusal using DeepSeek-V4.1-Flash-1017. These cases do not establish
+general model quality; the other River models have not been tested live here.
 The optional [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)
 adapter uses `store: false`. Keys stay on the server; never use a `VITE_` prefix for
 secrets. The request sends the prompt, timeline metadata (including asset

@@ -6,6 +6,10 @@ const before = { ...putAsset(emptyTimeline(), { id: "a", kind: "video", duration
 const input = { prompt: "Fix the leading gap", before, selectedClipId: "c", playheadMs: 0, lockedTrackIds: [] };
 const signal = new AbortController().signal;
 describe("assistant client", () => {
+  it("accepts River configuration so the disclosure identifies the provider receiving metadata", async () => {
+    const config = { provider: "River", model: "deepseek-ai/DeepSeek-V4.1-Flash-1017", configured: true, accessRequired: true };
+    expect(await assistantConfiguration(signal, vi.fn<typeof fetch>().mockResolvedValue(Response.json(config)))).toEqual(config);
+  });
   it("reads the actual provider for the disclosure without requesting a key", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('{"provider":"Groq","model":"openai/gpt-oss-120b","configured":true}'));
     expect(await assistantConfiguration(signal, fetcher)).toEqual({ provider: "Groq", model: "openai/gpt-oss-120b", configured: true, accessRequired: false });

@@ -7,7 +7,7 @@ function operation(type: string, properties: Readonly<Record<string, unknown>> =
   return schema({ type: { type: "string", enum: [type] }, clipId: { type: "string" }, ...properties });
 }
 
-export const GROQ_PLAN_FORMAT = {
+export const PLAN_RESPONSE_FORMAT = {
   type: "json_schema",
   json_schema: {
     name: "cutroom_verification_proposal", strict: true,
@@ -25,22 +25,22 @@ export const GROQ_PLAN_FORMAT = {
   },
 };
 
-function object(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Groq returned an invalid response.");
+function object(value: unknown, provider: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${provider} returned an invalid response.`);
   return Object.fromEntries(Object.entries(value));
 }
 
-export function groqPlan(input: unknown): unknown {
-  const response = object(input);
-  if (!Array.isArray(response.choices) || response.choices.length !== 1) throw new Error("Groq returned no proposal.");
-  const choice = object(response.choices[0]);
-  const message = object(choice.message);
-  if (message.refusal) throw new Error("Groq declined this request. Try describing the issue differently.");
-  if (choice.finish_reason !== "stop") throw new Error("Groq did not complete the proposal. Try a smaller request.");
-  if (typeof message.content !== "string") throw new Error("Groq returned no proposal.");
-  const plan = object(JSON.parse(message.content));
-  if (!Array.isArray(plan.ops)) throw new Error("Groq returned an invalid proposal.");
+export function chatCompletionPlan(input: unknown, provider: "Groq" | "River"): unknown {
+  const response = object(input, provider);
+  if (!Array.isArray(response.choices) || response.choices.length !== 1) throw new Error(`${provider} returned no proposal.`);
+  const choice = object(response.choices[0], provider);
+  const message = object(choice.message, provider);
+  if (message.refusal) throw new Error(`${provider} declined this request. Try describing the issue differently.`);
+  if (choice.finish_reason !== "stop") throw new Error(`${provider} did not complete the proposal. Try a smaller request.`);
+  if (typeof message.content !== "string") throw new Error(`${provider} returned no proposal.`);
+  const plan = object(JSON.parse(message.content), provider);
+  if (!Array.isArray(plan.ops)) throw new Error(`${provider} returned an invalid proposal.`);
   // Strict schemas require nullable fields; the engine uses absent optionals.
   const optionals = ["trackId", "inPoint", "duration", "x", "y", "scaleX", "scaleY", "rotation"];
-  return { ...plan, ops: plan.ops.map((input) => Object.fromEntries(Object.entries(object(input)).filter(([key, value]) => value !== null || !optionals.includes(key)))) };
+  return { ...plan, ops: plan.ops.map((input) => Object.fromEntries(Object.entries(object(input, provider)).filter(([key, value]) => value !== null || !optionals.includes(key)))) };
 }
