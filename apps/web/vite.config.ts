@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => {
     });
   };
   return {
+    define: {
+      "import.meta.env.VITE_VERCEL_ANALYTICS": JSON.stringify(process.env.VERCEL === "1" ? "true" : "false"),
+    },
     plugins: [react(), tailwindcss(), {
       name: "cutroom-assistant",
       configureServer: installAssistant,
