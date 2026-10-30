@@ -8,7 +8,7 @@ import {
   type ConflictBand,
   type ConflictGhost,
 } from "../lib/mergeView";
-import { uploadFiles } from "../lib/upload";
+import { importMedia } from "../lib/upload";
 import { createTimeScale } from "../lib/timeScale";
 import { rulerTicksInTimelineWindow, timelineWindow } from "../lib/timelineViewport";
 import { formatRulerTime } from "../lib/timecode";
@@ -214,7 +214,7 @@ export function Timeline() {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        void uploadFiles(event.dataTransfer.files);
+        void importMedia(event.dataTransfer.files);
       }}
       style={{ outline: dragging ? "2px dashed #d97757" : "none", outlineOffset: -2 }}
     >

@@ -1,6 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { uploadFiles } from "../lib/upload";
-import { usePersistenceStore } from "../lib/persistence/persistenceStore";
+import { importMedia } from "../lib/upload";
 import { Button } from "./ui/button";
 
 /**
@@ -13,11 +12,7 @@ export function UploadButton({ icon, label = "Add video", accept = "video/*,audi
 
   const onFiles = async (files: FileList | null) => {
     if (files === null || files.length === 0) return;
-    const report = await uploadFiles(files, setStatus);
-    if (report.storageWarning !== null) {
-      // The file works for this session, but it will not survive a refresh.
-      usePersistenceStore.getState().setMediaWarning(report.storageWarning);
-    }
+    const report = await importMedia(files, setStatus);
     if (report.skipped.length > 0) {
       setStatus(
         report.skipped

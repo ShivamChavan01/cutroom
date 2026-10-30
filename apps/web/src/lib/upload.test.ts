@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emptyTimeline } from "@cutroom/engine";
+import { createHistory, emptyTimeline } from "@cutroom/engine";
 import { useEditorStore } from "../store";
+import { useVcsStore } from "../vcsStore";
+import { createRepo } from "./vcs";
+import { installDemoProject } from "./demo/load";
 import { clearAssetUrls, resolveAssetUrl } from "./assets";
-import { uploadFiles } from "./upload";
+import { importMedia, uploadFiles } from "./upload";
+import { usePersistenceStore } from "./persistence/persistenceStore";
 
 let probeFails = false;
 let imageFails = false;
 let probeDuration = 2;
 let probeHangs = false;
+let probeDelayed = false;
+let completeProbe: (() => void) | null = null;
 const allocatedUrls: string[] = [];
 
 class ProbeVideo {
@@ -24,10 +30,12 @@ class ProbeVideo {
   set src(url: string) {
     this.url = url;
     if (probeHangs) return;
-    queueMicrotask(() => {
+    const complete = () => {
       if (probeFails) this.onerror?.();
       else this.onloadedmetadata?.();
-    });
+    };
+    if (probeDelayed) completeProbe = complete;
+    else queueMicrotask(complete);
   }
 
   removeAttribute(_name: string): void {}
@@ -53,8 +61,12 @@ describe("uploadFiles", () => {
     imageFails = false;
     probeDuration = 2;
     probeHangs = false;
+    probeDelayed = false;
+    completeProbe = null;
     useEditorStore.getState().loadTimeline(emptyTimeline("upload-test"));
+    useVcsStore.setState({repo: null, pending: null, diffOverlay: null});
     clearAssetUrls();
+    usePersistenceStore.getState().setMediaWarning(null);
     vi.stubGlobal("document", { createElement: () => new ProbeVideo() });
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("Image", ProbeImage);
@@ -185,5 +197,114 @@ describe("uploadFiles", () => {
     const report = await uploadFiles([new File(["video bytes"], "renamed.mp4")]);
     expect(report.skipped).toEqual([]);
     expect(useEditorStore.getState().timeline.assets[source.id]).toMatchObject({name: "first.mp4", tags: ["keep"]});
+  });
+
+  it("reports OPFS failures from the shared picker/drop entrypoint", async () => {
+    vi.stubGlobal("navigator", {storage: {getDirectory: async () => {throw new DOMException("quota denied", "QuotaExceededError");}}});
+    const report = await importMedia([new File(["video bytes"], "demo.mp4")]);
+    expect(report.added).toHaveLength(1);
+    expect(report.storageWarning).toBe("quota denied");
+    expect(usePersistenceStore.getState().mediaWarning).toBe("quota denied");
+  });
+
+  it("reports corrupt and zero-duration imports without adding clips", async () => {
+    probeDuration = 0;
+    const report = await importMedia([new File([], "empty.mp4")]);
+    expect(report.added).toEqual([]);
+    expect(usePersistenceStore.getState().mediaWarning).toMatch(/skipped empty.mp4: cannot read/);
+  });
+
+  it("retains both skipped-file and session-only notices for mixed selections", async () => {
+    imageFails = true;
+    const report = await importMedia([new File(["bad"], "bad.png"), new File(["good"], "good.mp4")]);
+    expect(report.added).toHaveLength(1);
+    expect(usePersistenceStore.getState().mediaWarning).toMatch(/no private file system.*skipped bad.png/);
+  });
+
+  it("empty imports do not erase an existing restoration warning", async () => {
+    usePersistenceStore.getState().setMediaWarning("older source is missing");
+    expect(await importMedia([])).toEqual({added: [], skipped: [], storageWarning: null});
+    expect(usePersistenceStore.getState().mediaWarning).toBe("older source is missing");
+  });
+
+  it.each(["checkout", "away-and-back", "detached", "reset", "restore", "fork", "merge", "fast-forward"])("cancels an import across %s without changing the destination timeline", async action => {
+    const vcs = useVcsStore.getState(), editor = useEditorStore.getState();
+    vcs.ensureRepo(); vcs.createBranch("alternate");
+    if (action === "merge") {
+      editor.dispatch({type: "renameProject", name: "Our cut"}); vcs.commitCurrent("Our cut"); vcs.checkoutBranch("alternate");
+      editor.dispatch({type: "setFrameRate", fps: 25}); vcs.commitCurrent("Their fps"); vcs.checkoutBranch("main");
+    }
+    if (action === "fast-forward") {
+      vcs.checkoutBranch("alternate"); editor.dispatch({type: "setFrameRate", fps: 25}); vcs.commitCurrent("Ahead"); vcs.checkoutBranch("main");
+    }
+    const initial = useEditorStore.getState().timeline;
+    probeDelayed = true;
+    const pending = importMedia([new File(["video bytes"], "main.mp4")]);
+    if (action === "checkout" || action === "away-and-back") vcs.checkoutBranch("alternate");
+    if (action === "away-and-back") vcs.checkoutBranch("main");
+    if (action === "detached") vcs.viewCommit("c0");
+    if (action === "reset") {editor.loadTimeline(initial); vcs.restoreRepo(createRepo(initial, "test"));}
+    if (action === "restore") editor.restoreHistory(createHistory(initial));
+    if (action === "fork") vcs.forkBranch("fork");
+    if (action === "merge" || action === "fast-forward") vcs.beginMerge("alternate");
+    const destination = useEditorStore.getState(), repo = useVcsStore.getState().repo, merge = useVcsStore.getState().pending;
+    if (completeProbe === null) throw new Error("Expected pending metadata");
+    completeProbe();
+    const report = await pending;
+    expect(report.added).toEqual([]);
+    expect(report.skipped).toEqual([{name: "main.mp4", reason: expect.stringMatching(/canceled|finish.*merge/i)}]);
+    expect(usePersistenceStore.getState().mediaWarning).toMatch(/main.mp4/);
+    expect(useEditorStore.getState()).toBe(destination);
+    expect(useVcsStore.getState().repo).toBe(repo); expect(useVcsStore.getState().pending).toBe(merge);
+    await expect(fetch(allocatedUrls[0] ?? "")).rejects.toThrow();
+  });
+
+  it("cancels after a native storage await if checkout changed ownership", async () => {
+    const vcs = useVcsStore.getState(); vcs.ensureRepo(); vcs.createBranch("alternate");
+    let release: (() => void) | undefined;
+    vi.stubGlobal("navigator", {storage: {getDirectory: async () => ({getDirectoryHandle: async () => ({getFileHandle: async () => ({createWritable: async () => ({write: async () => new Promise<void>(resolve => {release = resolve;}), close: async () => {}})})})})}});
+    const pending = uploadFiles([new File(["video bytes"], "main.mp4")]);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    vcs.checkoutBranch("alternate"); const destination = useEditorStore.getState();
+    if (release === undefined) throw new Error("Expected native write"); release();
+    expect((await pending).added).toEqual([]); expect(useEditorStore.getState()).toBe(destination);
+    expect(resolveAssetUrl(Object.keys(destination.timeline.assets)[0] ?? "")).toBeUndefined();
+  });
+
+  it("keeps imports valid across ordinary edits, commits and branch creation in the same cut", async () => {
+    const vcs = useVcsStore.getState(); vcs.ensureRepo(); probeDelayed = true;
+    const pending = uploadFiles([new File(["video bytes"], "main.mp4")]);
+    useEditorStore.getState().dispatch({type: "setFrameRate", fps: 25}); vcs.commitCurrent("While importing"); vcs.createBranch("later");
+    if (completeProbe === null) throw new Error("Expected metadata"); completeProbe();
+    expect((await pending).added).toHaveLength(1);
+    expect(useEditorStore.getState().timeline.fps).toBe(25);
+    expect(Object.keys(useVcsStore.getState().repo!.commits.c1!.timeline.assets)).toHaveLength(0);
+  });
+
+  it("allows concurrent imports without treating source registration as checkout", async () => {
+    const reports = await Promise.all([uploadFiles([new File(["one"], "one.mp4")]), uploadFiles([new File(["two"], "two.mp4")])]);
+    expect(reports.every(report => report.added.length === 1)).toBe(true);
+    expect(Object.keys(useEditorStore.getState().timeline.assets)).toHaveLength(2);
+    expect(Object.keys(useEditorStore.getState().timeline.clips)).toHaveLength(2);
+  });
+
+  it("does not allocate or probe media when a merge is already pending", async () => {
+    installDemoProject(); useVcsStore.getState().beginMerge("alternate");
+    const before = useEditorStore.getState();
+    const report = await importMedia([new File(["video bytes"], "blocked.mp4")]);
+    expect(report.added).toEqual([]);
+    expect(report.skipped[0]?.reason).toMatch(/finish or cancel the merge/i);
+    expect(allocatedUrls).toEqual([]); expect(useEditorStore.getState()).toBe(before);
+  });
+
+  it("retains the first file on its originating commit and cancels the rest after checkout", async () => {
+    const vcs = useVcsStore.getState(); vcs.ensureRepo(); vcs.createBranch("alternate");
+    const report = await uploadFiles([new File(["one"], "one.mp4"), new File(["two"], "two.mp4")], status => {
+      if (status === "reading two.mp4…") {vcs.commitCurrent("First file"); vcs.checkoutBranch("alternate");}
+    });
+    expect(report.added).toHaveLength(1); expect(report.skipped.map(file => file.name)).toEqual(["two.mp4"]);
+    expect(Object.keys(useEditorStore.getState().timeline.clips)).toHaveLength(0);
+    const main = useVcsStore.getState().repo!.commits[useVcsStore.getState().repo!.branches.main!]!;
+    expect(Object.values(main.timeline.assets).map(asset => asset.name)).toEqual(["one.mp4"]);
   });
 });

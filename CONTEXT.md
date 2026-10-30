@@ -1,4 +1,26 @@
-## Current update: agent-reported issues 1–5, 2026-10-30
+## Current update: reliability fixes for issues 6–9, 2026-10-30
+
+Local work from `254fb52`; no commit, push or deployment. The untracked
+adversarial report and its QA fixtures remain available as historical evidence.
+See [RELIABILITY-FIX-REPORT.md](RELIABILITY-FIX-REPORT.md) for the current results.
+
+Older autosave completions can no longer acknowledge a newer history/repo/pending
+revision, overwrite a newer result, or update status after effect disposal.
+Timeline deletion retains source bytes; automatic collection is deferred.
+Picker and drop paths share import-report handling. An ephemeral editor session
+counter plus branch/detached state protects import ownership across asynchronous
+probe/write boundaries, including checkout away and back and reset to the same
+sample IDs. Pending merges reject imports. Same-session edits, commits and
+concurrent imports remain supported. No model, project schema or export format
+change was needed.
+
+All 2,824 engine/web/adversarial/performance-script cases pass across 91 files,
+with zero skipped tests. TypeScript and build pass. Eight new production-build
+Chrome journeys and existing readiness, persistence, merge and graph suites pass.
+These are local results, not deployed fixes. The original audit's remaining
+limits still apply; this is not a power-loss or full-browser durability proof.
+
+## Historical update: agent-reported issues 1–5, 2026-10-30
 
 Starting checkout: clean main `9d27bad`. Fixes are local; no commit, push,
 deployment or GitHub issue mutation. See [ISSUE-FIX-REPORT.md](ISSUE-FIX-REPORT.md)

@@ -1,0 +1,13 @@
+{
+  "extends": "../../apps/web/tsconfig.json",
+  "include": [
+    "*.test.ts"
+  ],
+  "exclude": [],
+  "compilerOptions": {
+    "types": []
+  },
+  "files": [
+    "../../apps/web/node_modules/vite/client.d.ts"
+  ]
+}

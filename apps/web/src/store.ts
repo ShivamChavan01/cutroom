@@ -23,6 +23,8 @@ import { indexedClipsOnTrack } from "./lib/clipIndex";
 import { previewPlan } from "./lib/assistant/proposal";
 
 export interface EditorStore {
+  /** Runtime ownership token for async imports; changes on session replacement, not edits. */
+  readonly sessionId: number;
   readonly history: History;
   /** Derived from history on every mutation. Never written directly. */
   readonly timeline: Timeline;
@@ -64,6 +66,7 @@ function derive(history: History): Pick<EditorStore, "history" | "timeline"> {
 }
 
 export const useEditorStore = create<EditorStore>()((set) => ({
+  sessionId: 0,
   ...derive(createHistory(emptyTimeline("untitled"))),
   selectedClipId: null,
   playheadMs: 0,
@@ -118,6 +121,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
 
   loadTimeline: (timeline) =>
     set((state) => ({
+      sessionId: state.sessionId + 1,
       ...derive(createHistory(timeline)),
       selectedClipId: null,
       playheadMs: 0,
@@ -134,6 +138,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
 
   restoreHistory: (history) =>
     set((state) => ({
+      sessionId: state.sessionId + 1,
       ...derive(history),
       selectedClipId: null,
       playheadMs: 0,

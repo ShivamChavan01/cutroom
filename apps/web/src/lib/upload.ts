@@ -2,7 +2,9 @@ import { type Asset } from "@cutroom/engine";
 import { registerAssetUrl } from "./assets";
 import { isOpfsAvailable, writeMedia } from "./media/opfs";
 import { useEditorStore } from "../store";
+import { useVcsStore } from "../vcsStore";
 import { clipForMedia } from "./mediaLibrary";
+import { usePersistenceStore } from "./persistence/persistenceStore";
 
 /** Short deterministic id when hashing is unavailable. Never silent. */
 async function assetIdFor(file: File): Promise<string> {
@@ -99,10 +101,29 @@ export interface UploadReport {
   readonly storageWarning: string | null;
 }
 
+/** Picker and drop imports report durable-storage failures and rejected files alike. */
+export async function importMedia(files: Iterable<File>, onStatus?: (status: string | null) => void): Promise<UploadReport> {
+  const report = await uploadFiles(files, onStatus);
+  const notices = [...(report.storageWarning === null ? [] : [report.storageWarning]),
+    ...report.skipped.map(file => `skipped ${file.name}: ${file.reason}`)];
+  if (notices.length > 0) usePersistenceStore.getState().setMediaWarning(notices.join("; "));
+  return report;
+}
+
 export async function uploadFiles(
   files: Iterable<File>,
   onStatus?: (status: string | null) => void,
 ): Promise<UploadReport> {
+  const sessionId = useEditorStore.getState().sessionId;
+  const owner = useVcsStore.getState().repo;
+  const requireOwner = (): void => {
+    const vcs = useVcsStore.getState();
+    if (useEditorStore.getState().sessionId !== sessionId ||
+        vcs.repo?.currentBranch !== owner?.currentBranch || vcs.repo?.detachedAt !== owner?.detachedAt) {
+      throw new Error("Import canceled because you switched versions or reset the project. Import the file again in the current version.");
+    }
+    if (vcs.pending !== null) throw new Error("Finish or cancel the merge before importing media.");
+  };
   const added: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
   let storageWarning: string | null = null;
@@ -110,12 +131,14 @@ export async function uploadFiles(
     onStatus?.(`reading ${file.name}…`);
     let url: string | null = null;
     try {
+      requireOwner();
       url = URL.createObjectURL(file);
       const kind = mediaKind(file);
       const [id, metadata] = await Promise.all([
         assetIdFor(file),
         kind === "image" ? probeImage(url) : probeMedia(url),
       ]);
+      requireOwner();
 
       // Store the bytes so the clip still plays after a refresh. If the
       // browser has no private file system, or no room, the session URL
@@ -130,7 +153,8 @@ export async function uploadFiles(
           "this browser has no private file system — media lasts for this session only";
       }
 
-      // Another import may have changed the timeline while metadata loaded.
+      requireOwner();
+      // Other edits/imports may advance this session; checkout must never redirect it.
       const store = useEditorStore.getState();
       const previous = store.timeline.assets[id];
       if (previous === undefined) store.addAsset({id, kind, ...metadata, name: file.name, mimeType: file.type, bytes: file.size});

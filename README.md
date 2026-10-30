@@ -53,6 +53,8 @@ edits or reset before repeating the guide.
   references. Stale or malformed merge data is canceled with a recovery notice;
   saved versions and working edits remain available. Cancel is always explicit
   for a valid merge. Merely reloading never commits it.
+  Save completion acknowledges its captured history, branch graph and pending
+  merge only; an older write cannot mark newer edits as saved.
 - Commit working edits before merging, including tag changes. A source already
   included in the current version is an **Already up to date** no-op. If the
   current version is an ancestor of the source, merging fast-forwards the branch
@@ -63,6 +65,15 @@ edits or reset before repeating the guide.
   same content adds another clip without overwriting its existing name or tags.
   New saves use internal project schema 2; this build reads schema 1 and 2.
   Older builds cannot read schema 2. Timeline export formats are unchanged.
+- Deleting a timeline clip retains its source file for Undo, the media library
+  and saved versions. Clip deletion does not reclaim disk space. Automatic
+  unused-file collection is deferred rather than risking recoverable footage.
+- File-picker and timeline-drop imports report skipped files and storage
+  failures in the editor. Switching versions, viewing an old commit, restoring
+  a session or resetting during import cancels the remaining import with a
+  message. Import again in the desired version. Ordinary edits and commits in
+  the same version can continue while media loads. A write already in progress
+  may leave a cached file even if its import is canceled.
 - Bundled media is served from this app and restored without OPFS. New uploads
   use the active workspace's OPFS directory. Resetting the sample resets project
   state, retaining uploaded sample files in that isolated directory. Browser

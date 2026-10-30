@@ -122,21 +122,31 @@ export function useProjectPersistence(): void {
   useEffect(() => {
     if (!hydrated || loadFailure !== null) return;
     let timer: number | null = null;
+    let disposed = false;
 
     const save = async (): Promise<void> => {
       const { history } = useEditorStore.getState();
       const { repo, pending } = useVcsStore.getState();
       if (repo === null) return;
+      const isCurrent = (): boolean => !disposed &&
+        useEditorStore.getState().history === history &&
+        useVcsStore.getState().repo === repo && useVcsStore.getState().pending === pending;
       setStatus("saving");
-      const result = await writeProject(serializeProject({ history, repo, pending }));
-      if (!result.ok) {
-        setStatus(
-          result.status === "unavailable" ? "unavailable" : "error",
-          result.error ?? "could not save the project",
-        );
-        return;
+      try {
+        const result = await writeProject(serializeProject({ history, repo, pending }));
+        // An older completion cannot acknowledge edits made while it was writing.
+        if (!isCurrent()) return;
+        if (!result.ok) {
+          setStatus(
+            result.status === "unavailable" ? "unavailable" : "error",
+            result.error ?? "could not save the project",
+          );
+          return;
+        }
+        setStatus("saved");
+      } catch (error) {
+        if (isCurrent()) setStatus("error", error instanceof Error ? error.message : "could not save the project");
       }
-      setStatus("saved");
     };
 
     const schedule = (delay = SAVE_DEBOUNCE_MS): void => {
@@ -157,6 +167,7 @@ export function useProjectPersistence(): void {
     });
 
     return () => {
+      disposed = true;
       unsubEditor();
       unsubVcs();
       if (timer !== null) window.clearTimeout(timer);
