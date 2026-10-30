@@ -1,22 +1,22 @@
 # Cutroom
 
-A browser-based video editor prototype built to answer two of Cardboard's
-own hard problems with working code instead of claims:
+Explore different edits without losing your work.
 
-1. **Version Control** — "Code has git. Video has nothing."
-2. **Verification** — "There's no linter for video. We have to build one."
+Cutroom is a browser video-editor prototype for alternate cuts, change comparison,
+conflict-aware merging, and deterministic timeline checks. Editing decisions are
+structured operations, so they can be replayed, compared, and reviewed.
 
-[Open the hosted editor](https://cutroom-editor.vercel.app/).
-Cutroom explores branching, conflict-aware merging, and structural verification
-for video timelines. AI explanations propose edits for review; they never apply
-changes on their own. This is a prototype, including timeline interchange export,
-not rendered MP4 export.
+[Open the hosted editor](https://cutroom-editor.vercel.app/). The optional sample
+runs without uploads or AI access. AI explanations suggest edits for review;
+applying them is an explicit action. Export produces timeline interchange files,
+not a rendered MP4.
 
 ## Try the sample project
 
-This revision adds **Try demo project** inside the editor. Run it locally with
-`pnpm dev`; the hosted editor needs a deployment of this revision before the
-sample button is available. No upload or AI access code is needed for the sample.
+Choose **Try demo project** inside the editor. Run `pnpm dev` to preview this
+working revision. The improved guidance and merge recovery described here need
+an authorized deployment before they appear on the hosted editor. No upload or
+AI access code is needed for the sample.
 
 1. Choose **Try demo project**. A separate sample tab opens with an eight-second
    original motion study, three video clips, and an audio bed. Press Play.
@@ -48,8 +48,11 @@ edits or reset before repeating the guide.
   The **Personal workspace** link opens a personal tab; your original tab remains
   available with its working edits.
 - Sample commits, edits, undo history, and uploaded media restore after refresh.
-  Wait for **saved** before refreshing. Pending merge resolutions are **not**
-  persisted: refresh cancels an uncommitted merge, as the guide warns.
+  Wait for **saved** before refreshing. Pending merges also restore after **saved**, including recorded resolution
+  choices. Restore replays choices through the engine and validates version
+  references. Stale or malformed merge data is canceled with a recovery notice;
+  saved versions and working edits remain available. Cancel is always explicit
+  for a valid merge. Merely reloading never commits it.
 - Bundled media is served from this app and restored without OPFS. New uploads
   use the active workspace's OPFS directory. Resetting the sample resets project
   state, retaining uploaded sample files in that isolated directory. Browser
@@ -79,8 +82,8 @@ Desktop editing is checked at 1440×900, 1366×768, 1280×800 and 1024×768. Pan
 remain resizable; larger monitors give the preview and inspector more room.
 Narrow screens show a desktop notice: full mobile editing is not supported.
 Structural checks do not prove visual/audio quality or frame-accurate playback.
-See [the implementation and QA report](FOUNDER-DEMO-REPORT.md) for evidence and
-remaining limitations. Vercel builds the monorepo using `vercel.json` on `main`;
+See [the current readiness review](FOUNDER-READINESS-REPORT.md),
+[test results](TEST-RESULTS.md), and [demo limitations](DEMO-LIMITATIONS.md). Vercel builds the monorepo using `vercel.json` on `main`;
 the [GitHub Pages static mirror](https://shivamchavan01.github.io/cutroom/) has no
 AI endpoint.
 

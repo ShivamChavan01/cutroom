@@ -327,3 +327,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .demo-guide { min-width: 800px; }
 }
 .assistant-availability { border-left: 2px solid var(--color-border); padding-left: 10px; margin-block: 12px; font-size: 12px; line-height: 1.6; color: var(--color-muted); }
+
+.merge-choice { margin: 10px 0; font-size: 12px; }
+.merge-choice > button { margin-left: 6px; }
+.merge-overlap { border: 1px solid var(--color-border); padding: 12px; border-radius: 5px; }
+.merge-overlap > p, .merge-save-note { color: var(--color-muted); line-height: 1.6; font-size: 12px; margin-block: 6px; }
+.merge-overlap-actions { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; }
+.merge-overlap-actions small { display: block; margin-top: 4px; color: var(--color-muted); }
+.merge-recovery { padding: 8px 14px; color: var(--color-warn); border-top: 1px solid var(--color-border); font-size: 12px; }
+.diagnostic-finding { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 8px 0; }
+.finding-location { color: var(--color-foreground); font-family: monospace; }
+.finding-explanation { color: var(--color-muted); font-size: 12px; line-height: 1.6; }

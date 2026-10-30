@@ -1,3 +1,28 @@
+## Current update: founder readiness review, 2026-10-30
+
+Starts at clean main `2481442`; all improvements remain local, uncommitted and
+undeployed. See FOUNDER-READINESS-REPORT.md, QA-FINDINGS.md, TEST-RESULTS.md and
+DEMO-LIMITATIONS.md. New guidance states the editing benefit first and derives
+its position from actual editor state, including joined histories after extra
+commits on either branch. Pending merge inputs and explicit choices now persist
+in the existing project slot and replay through existing engine resolvers.
+Invalid/stale pending data gets a recovery notice while valid project data is
+preserved. All resolution UI callers use the same journaled command; no saved
+clean flag or result snapshot is trusted. Original media/design/engine stay intact.
+Overlap choices explain removed content. Gap findings show precise timing and
+editorial uncertainty. Source/track-scoped decode warnings survive unrelated
+healthy audio readiness. Existing River access controls and server code are unchanged.
+
+Final full suite: 744 tests / 82 files passed; both typechecks, production build,
+script syntax and diff checks passed. Production-build Chrome flows cover all
+four requested desktop sizes, partial/full merge recovery, cancellation, actual
+media and gap timing, personal isolation and injected storage/decode/corruption
+failures. Existing graph, persistence, merge, editorial, waveform, detach, assistant
+and demo browser suites passed. AI checks are HTTP fixtures, with zero paid calls.
+No configured lint tool; Lizard unavailable. Older/branch-exclusive uploaded-media
+restoration, same-workspace concurrent tabs and broader browser/playback quality
+remain limits. Historical entries below refer to earlier implementation snapshots.
+
 ## Current update: founder demo UX, 2026-10-30
 
 Local implementation at unchanged HEAD `7519d38`; starting checkout was clean.

@@ -102,7 +102,7 @@ export function Timeline() {
   // Pending merge: bands over each clash and ghosts for the merge's
   // own candidates. Null when no conflicted merge is in flight.
   const pending = useVcsStore((state) => state.pending);
-  const resolveConflict = useVcsStore((state) => state.setResult);
+  const resolveConflict = useVcsStore((state) => state.resolveConflict);
   const openTab = useUiStore((state) => state.openTab);
   const conflictVisuals = useMemo(
     () => (pending === null ? null : conflictsToVisuals(pending.result, timeline)),

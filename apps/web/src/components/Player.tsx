@@ -1,3 +1,4 @@
+import {updatePlaybackErrors, type PlaybackError} from "../lib/playbackErrors";
 import { type Track } from "@cutroom/engine";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { advancePlayback, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "../lib/playback";
@@ -21,12 +22,12 @@ declare global {
   }
 }
 
-function TrackPlayer({ track, order, muted, onError, onReady }: {
+function TrackPlayer({ track, order, muted, onMediaError, onMediaReady }: {
   readonly track: Track;
   readonly order: number;
   readonly muted: boolean;
-  readonly onError: (message: string) => void;
-  readonly onReady: () => void;
+  readonly onMediaError: (trackId: string, assetId: string, message: string) => void;
+  readonly onMediaReady: (trackId: string, assetId: string) => void;
 }) {
   const timeline = useEditorStore((state) => state.timeline);
   const at = useEditorStore((state) => state.playheadMs);
@@ -34,6 +35,9 @@ function TrackPlayer({ track, order, muted, onError, onReady }: {
   const clips = useMemo(() => indexedClipsOnTrack(timeline, track.id), [timeline, track.id]);
   const active = resolveActiveClip(clips, at);
   const asset = active === null ? undefined : timeline.assets[active.clip.assetId];
+  const assetId = active?.clip.assetId;
+  const onError = useCallback((message: string) => {if (assetId !== undefined) onMediaError(track.id, assetId, message);}, [assetId, track.id, onMediaError]);
+  const onReady = useCallback(() => {if (assetId !== undefined) onMediaReady(track.id, assetId);}, [assetId, track.id, onMediaReady]);
   const source = useAssetUrls((urls) => active === null ? undefined : urls.get(active.clip.assetId));
   const slots = useRef<Record<Side, HTMLMediaElement | null>>({ a: null, b: null });
   const live = useRef<Side>("a");
@@ -201,15 +205,16 @@ export function Player({ zoom = "fit", fill = false }: { readonly zoom?: "fit" |
   const urls = useAssetUrls();
   const viewport = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 960, height: 540 });
-  const [error, setError] = useState<string | null>(null);
-  const onError = useCallback((message: string) => {
-    setError(message);
+  const [errors, setErrors] = useState<ReadonlyMap<string, PlaybackError>>(new Map());
+  const onError = useCallback((trackId: string, assetId: string, message: string) => {
+    setErrors(previous => updatePlaybackErrors(previous, {kind: "failed", trackId, assetId, message}));
     useEditorStore.getState().pause();
   }, []);
-  const onReady = useCallback(() => setError(null), []);
+  const onReady = useCallback((trackId: string, assetId: string) => setErrors(previous => updatePlaybackErrors(previous, {kind: "ready", trackId, assetId})), []);
   const visibleTracks = timeline.tracks.filter((track) => !hidden.includes(track.id));
   const layers = resolvePlaybackLayers(timeline, at, hidden);
   const visualLayers = layers.filter((layer) => layer.track.kind === "video");
+  const activeErrors = layers.flatMap(layer => {const error = errors.get(layer.track.id); return error?.assetId === layer.clip.assetId ? [{trackId: layer.track.id, message: error.message}] : [];});
   const missing = layers.find((layer) => !urls.has(layer.clip.assetId));
   const canvasAsset = Object.values(timeline.assets).find((asset) => asset.kind !== "audio" && asset.width !== undefined && asset.height !== undefined);
   const width = canvasAsset?.width ?? 1280;
@@ -258,11 +263,11 @@ export function Player({ zoom = "fit", fill = false }: { readonly zoom?: "fit" |
     <div className="player-compositor" style={{ position: "relative", height: fill ? "100%" : undefined, aspectRatio: fill ? undefined : "16 / 9", maxWidth: fill ? undefined : 960, marginBottom: 0 }}>
       <div ref={viewport} className="player-viewport" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#000" }}>
         <div className="player-stage" data-canvas-width={width} data-canvas-height={height} style={{ position: "absolute", left: "50%", top: "50%", width, height, transformOrigin: "center", transform: `translate(-50%, -50%) scale(${scale})` }}>
-          {visibleTracks.map((track, index) => <TrackPlayer key={track.id} track={track} order={index} muted={muted.includes(track.id)} onError={onError} onReady={onReady} />)}
+          {visibleTracks.map((track, index) => <TrackPlayer key={track.id} track={track} order={index} muted={muted.includes(track.id)} onMediaError={onError} onMediaReady={onReady} />)}
         </div>
         {visualLayers.length === 0 && <div className="player-message">Gap — no clip under the playhead</div>}
         {missing !== undefined && <div className="player-message player-message-warning">Media not local yet: {missing.clip.assetId}</div>}
-        {error !== null && <div role="alert" className="player-message player-message-warning">{error}</div>}
+        {activeErrors.length > 0 && <div role="alert" className="player-message player-message-warning">{activeErrors.map(error => <p key={error.trackId}>{error.message}</p>)}</div>}
       </div>
     </div>
   );

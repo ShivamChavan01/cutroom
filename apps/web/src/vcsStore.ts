@@ -1,10 +1,10 @@
+import {assertMergeCurrent, startMerge, recordResolution, type PendingMerge, type MergeChoice} from "./lib/mergeSession";
+export type {PendingMerge} from "./lib/mergeSession";
 import { create } from "zustand";
 import {
   type Diff,
-  type MergeResult,
   type Timeline,
   diffTimelines,
-  mergeTimelines,
   refreshMergeConflicts,
   isUnchanged,
 } from "@cutroom/engine";
@@ -15,20 +15,10 @@ import {
   commit as commitToRepo,
   createBranch,
   createRepo,
-  findMergeBase,
   head,
   viewCommit as viewCommitRepo,
 } from "./lib/vcs";
 import { useEditorStore } from "./store";
-
-export interface PendingMerge {
-  readonly sourceBranch: string;
-  readonly baseId: string;
-  readonly workingTimeline: Timeline;
-  readonly oursId: string;
-  readonly theirsId: string;
-  result: MergeResult;
-}
 
 export interface DiffOverlay {
   readonly baseLabel: string;
@@ -51,7 +41,7 @@ interface VcsStore {
   /** Check out a specific commit (detached HEAD) and show its timeline. */
   readonly viewCommit: (commitId: string) => void;
   readonly beginMerge: (sourceBranch: string) => void;
-  readonly setResult: (result: MergeResult) => void;
+  readonly resolveConflict: (key: string, choice: MergeChoice) => void;
   readonly cancelMerge: () => void;
   readonly commitMerge: (message: string) => void;
   readonly setDiff: (
@@ -62,7 +52,7 @@ interface VcsStore {
   ) => void;
   readonly clearDiff: () => void;
   /** Restore a persisted repo (commits, branches, HEAD state). */
-  readonly restoreRepo: (repo: Repo) => void;
+  readonly restoreRepo: (repo: Repo, pending?: PendingMerge | null) => void;
 }
 
 export const useVcsStore = create<VcsStore>()((set, get) => ({
@@ -127,30 +117,15 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     if (repo === null || sourceBranch === repo.currentBranch) return;
     if (repo.detachedAt !== null) throw new Error("Check out a branch before merging.");
     if (get().pending !== null) throw new Error("Finish or cancel the current merge first.");
-    const editor = useEditorStore.getState();
-    const ours = head(repo);
-    const theirs = head(repo, sourceBranch);
-    // Ours is the working timeline, not the head snapshot: merging takes
-    // your uncommitted edits along. Committing first is cleaner; this is
-    // friendlier. The commit message records which it was.
-    const base = findMergeBase(repo, ours.id, theirs.id);
-    if (base === null) throw new Error("vcs: no common ancestor");
-    set({
-      pending: {
-        sourceBranch,
-        baseId: base.id,
-        workingTimeline: editor.timeline,
-        oursId: ours.id,
-        theirsId: theirs.id,
-        result: mergeTimelines(base.timeline, editor.timeline, theirs.timeline),
-      },
-    });
+    set({pending: startMerge(repo, useEditorStore.getState().timeline, sourceBranch)});
   },
 
-  setResult: (result) =>
-    set((state) =>
-      state.pending === null ? state : { pending: { ...state.pending, result } },
-    ),
+  resolveConflict: (key, choice) => {
+    const {repo, pending} = get();
+    if (pending === null || repo === null) throw new Error("No merge is in progress.");
+    assertMergeCurrent(pending, repo, useEditorStore.getState().timeline);
+    set({pending: recordResolution(pending, {key, choice})});
+  },
 
   cancelMerge: () => set({ pending: null }),
 
@@ -167,7 +142,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
 
   clearDiff: () => set({ diffOverlay: null }),
 
-  restoreRepo: (repo) => set({ repo, pending: null, diffOverlay: null }),
+  restoreRepo: (repo, pending = null) => set({ repo, pending, diffOverlay: null }),
 
   commitMerge: (message) => {
     const { repo, pending } = get();
@@ -175,9 +150,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     const result = refreshMergeConflicts(pending.result);
     if (!result.clean) throw new Error("Resolve all conflicts before committing the merge.");
     const editor = useEditorStore.getState();
-    if (!isUnchanged(pending.workingTimeline, editor.timeline) || head(repo).id !== pending.oursId || head(repo, pending.sourceBranch).id !== pending.theirsId) {
-      throw new Error("The working timeline or branch heads changed. Cancel and restart the merge to include your edits.");
-    }
+    assertMergeCurrent(pending, repo, editor.timeline);
     const merged = commitToRepo(repo, result.merged, message, editor.authorId, [pending.oursId, pending.theirsId]);
     set({ repo: merged, pending: null, diffOverlay: null });
     editor.loadTimeline(pending.result.merged);

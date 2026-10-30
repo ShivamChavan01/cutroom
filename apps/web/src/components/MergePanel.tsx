@@ -1,110 +1,47 @@
 import { useMemo, useState } from "react";
-import {
-  type MergeResult,
-  lintDelta,
-  conflictKey,
-  resolveMetadata,
-  resolveField,
-  resolveProject,
-} from "@cutroom/engine";
-import { resolveDeleteModify, resolveOverlap } from "../lib/vcs";
+import {type Conflict, type MergeResult, lintDelta, conflictKey} from "@cutroom/engine";
+import type {MergeChoice} from "../lib/mergeSession";
 import { useEditorStore } from "../store";
 import { useVcsStore } from "../vcsStore";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-function ConflictRow({
-  conflict,
-  result,
-  onResolve,
-}: {
-  conflict: MergeResult["conflicts"][number];
-  result: MergeResult;
-  onResolve: (next: MergeResult) => void;
+function ConflictRow({conflict, result, onResolve}: {
+  conflict: Conflict; result: MergeResult; onResolve: (key: string, choice: MergeChoice) => void;
 }) {
-  if (conflict.kind === "assetField" || conflict.kind === "trackField" || conflict.kind === "assetPresence" || conflict.kind === "trackPresence" || conflict.kind === "trackOrder") {
-    const label = conflict.kind === "assetField" ? `Asset ${conflict.assetId}.${conflict.field}`
-      : conflict.kind === "trackField" ? `Track ${conflict.trackId}.${conflict.field}`
-      : conflict.kind === "assetPresence" ? `Asset ${conflict.assetId} deletion`
-      : conflict.kind === "trackPresence" ? `Track ${conflict.trackId} deletion` : "Track order";
-    return <li className="mb-2 text-[12px]">{label}: {JSON.stringify(conflict.ours) ?? "deleted"} / {JSON.stringify(conflict.theirs) ?? "deleted"}
-      <Button size="sm" onClick={() => { try { onResolve(resolveMetadata(result, conflict, "ours")); } catch (error) { window.alert(error instanceof Error ? error.message : "Resolution failed"); } }}>Keep ours</Button>
-      <Button size="sm" onClick={() => { try { onResolve(resolveMetadata(result, conflict, "theirs")); } catch (error) { window.alert(error instanceof Error ? error.message : "Resolution failed"); } }}>Take theirs</Button>
-      {(conflict.kind === "assetPresence" || conflict.kind === "trackPresence") && <Button size="sm" onClick={() => onResolve(resolveMetadata(result, conflict, "keep"))}>Keep metadata</Button>}
-    </li>;
+  const choose = (choice: MergeChoice) => onResolve(conflictKey(conflict), choice);
+  switch (conflict.kind) {
+    case "assetField": case "trackField": case "assetPresence": case "trackPresence": case "trackOrder": {
+      const label = conflict.kind === "assetField" ? `Asset ${conflict.assetId}.${conflict.field}`
+        : conflict.kind === "trackField" ? `Track ${conflict.trackId}.${conflict.field}`
+        : conflict.kind === "assetPresence" ? `Asset ${conflict.assetId} deletion`
+        : conflict.kind === "trackPresence" ? `Track ${conflict.trackId} deletion` : "Track order";
+      return <li className="merge-choice">{label}: {JSON.stringify(conflict.ours) ?? "deleted"} / {JSON.stringify(conflict.theirs) ?? "deleted"}
+        <Button size="sm" onClick={() => choose("ours")}>Keep ours</Button>
+        <Button size="sm" onClick={() => choose("theirs")}>Take theirs</Button>
+        {(conflict.kind === "assetPresence" || conflict.kind === "trackPresence") && <Button size="sm" onClick={() => choose("keep")}>Keep metadata</Button>}
+      </li>;
+    }
+    case "project":
+      return <li className="merge-choice">Project {conflict.field}: {String(conflict.ours)} / {String(conflict.theirs)}<Button size="sm" onClick={() => choose("ours")}>Keep ours</Button><Button size="sm" onClick={() => choose("theirs")}>Take theirs</Button></li>;
+    case "field":
+      return <li className="merge-choice"><span className="text-warn">[field]</span> {conflict.clipId}.{conflict.field}: ours {String(conflict.ours)} vs theirs {String(conflict.theirs)} <Button size="sm" onClick={() => choose("ours")}>Keep ours</Button><Button size="sm" onClick={() => choose("theirs")}>Take theirs</Button></li>;
+    case "deleteModify":
+      return <li className="merge-choice">[delete-vs-edit] {conflict.clipId} was removed in one cut and edited in the other. <Button size="sm" onClick={() => choose("keep")}>Keep clip</Button><Button size="sm" variant="destructive" onClick={() => choose("remove")}>Remove clip</Button></li>;
+    case "overlap": {
+      const track = result.merged.tracks.find(item => item.id === conflict.trackId);
+      return <li className="merge-choice merge-overlap">
+        <strong>Two edits place clips at overlapping times.</strong>
+        <p><code>{conflict.a}</code> and <code>{conflict.b}</code> overlap on {track?.kind ?? "video"} track {track?.name ?? conflict.trackId} from {(conflict.overlapStart / 1000).toFixed(2)}s to {(conflict.overlapEnd / 1000).toFixed(2)}s.</p>
+        <p>Choose which clip belongs in this cut. Keeping one removes the other; its timing stays unchanged.</p>
+        <div className="merge-overlap-actions">
+          <div><Button size="sm" onClick={() => choose("a")}>Keep {conflict.a}</Button><small>Removes {conflict.b}</small></div>
+          <div><Button size="sm" onClick={() => choose("b")}>Keep {conflict.b}</Button><small>Removes {conflict.a}</small></div>
+        </div>
+      </li>;
+    }
+    default: {const exhaustive: never = conflict; return exhaustive;}
   }
-  if (conflict.kind === "project") {
-    return <li className="merge-project-conflict">Project {conflict.field}: {String(conflict.ours)} / {String(conflict.theirs)}<Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "ours"))}>Keep ours</Button><Button size="sm" onClick={() => onResolve(resolveProject(result, conflict.field, "theirs"))}>Take theirs</Button></li>;
-  }
-  if (conflict.kind === "field") {
-    return (
-      <li className="mb-2 text-[12px]">
-        <span className="text-warn">[field]</span>{" "}
-        <span className="font-mono">{conflict.clipId}</span>.{conflict.field}: ours{" "}
-        <span className="font-mono">{String(conflict.ours)}</span> vs theirs{" "}
-        <span className="font-mono">{String(conflict.theirs)}</span>{" "}
-        <Button
-          size="sm"
-          onClick={() =>
-            onResolve(resolveField(result, conflict.clipId, conflict.field, "ours"))
-          }
-        >
-          Keep ours
-        </Button>{" "}
-        <Button
-          size="sm"
-          onClick={() =>
-            onResolve(resolveField(result, conflict.clipId, conflict.field, "theirs"))
-          }
-        >
-          Take theirs
-        </Button>
-      </li>
-    );
-  }
-  if (conflict.kind === "deleteModify") {
-    return (
-      <li className="mb-2 text-[12px]">
-        <span className="text-destructive">[delete-vs-edit]</span>{" "}
-        <span className="font-mono">{conflict.clipId}</span> deleted on one side,
-        edited on the other.{" "}
-        <Button
-          size="sm"
-          onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, true))}
-        >
-          Keep clip
-        </Button>{" "}
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => onResolve(resolveDeleteModify(result, conflict.clipId, false))}
-        >
-          Remove clip
-        </Button>
-      </li>
-    );
-  }
-  if (conflict.kind !== "overlap") { const exhaustive: never = conflict; return exhaustive; }
-  return (
-    <li className="mb-2 text-[12px]">
-      <span className="text-destructive">[overlap]</span>{" "}
-      <span className="font-mono">{conflict.a}</span> and{" "}
-      <span className="font-mono">{conflict.b}</span> collide on{" "}
-      {conflict.trackId}.{" "}
-      <Button
-        size="sm"
-        onClick={() => onResolve(resolveOverlap(result, conflict.a, conflict.b))}
-      >
-        Keep {conflict.a}
-      </Button>{" "}
-      <Button
-        size="sm"
-        onClick={() => onResolve(resolveOverlap(result, conflict.b, conflict.a))}
-      >
-        Keep {conflict.b}
-      </Button>
-    </li>
-  );
 }
 
 /**
@@ -118,6 +55,7 @@ export function MergePanel() {
   const store = useVcsStore.getState();
   const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
+  const [resolutionError, setResolutionError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
   /**
@@ -152,6 +90,8 @@ export function MergePanel() {
           ? "clean, ready to commit"
           : `${pending.result.conflicts.length} conflict(s) to resolve`}
       </header>
+      {resolutionError !== null && <p role="alert" className="text-destructive">{resolutionError}</p>}
+      <p className="merge-save-note">This merge is pending. Choices save locally; wait for saved before refreshing. Cancel keeps your original cut.</p>
       {!pending.result.clean && (
         <ul className="m-0 mb-3 list-none p-0">
           {pending.result.conflicts.map((conflict) => (
@@ -159,7 +99,7 @@ export function MergePanel() {
               key={conflictKey(conflict)}
               conflict={conflict}
               result={pending.result}
-              onResolve={store.setResult}
+              onResolve={(key, choice) => {try {store.resolveConflict(key, choice); setResolutionError(null);} catch (error) {setResolutionError(error instanceof Error ? error.message : "Could not record the choice.");}}}
             />
           ))}
         </ul>

@@ -1,3 +1,4 @@
+import {useUiStore} from "../../uiStore";
 import { isDemoWorkspace } from "../workspace";
 import { useEffect } from "react";
 import { emptyTimeline } from "@cutroom/engine";
@@ -63,7 +64,7 @@ export function useProjectPersistence(): void {
           if (cancelled) return;
           installDemoProject();
           const { history } = useEditorStore.getState();
-          const { repo } = useVcsStore.getState();
+          const { repo, pending } = useVcsStore.getState();
           if (repo !== null) {
             const saved = await writeProject(serializeProject({history, repo}));
             if (cancelled) return;
@@ -79,7 +80,9 @@ export function useProjectPersistence(): void {
       try {
         const project = deserializeProject(result.value);
         useEditorStore.getState().restoreHistory(toHistory(project.history));
-        useVcsStore.getState().restoreRepo(toRepo(project.repo));
+        useVcsStore.getState().restoreRepo(toRepo(project.repo), project.pending);
+        usePersistenceStore.getState().setMergeRecovery(project.mergeRecovery);
+        if (project.pending !== null) useUiStore.getState().openTab("merge");
         // Put the media back so the restored timeline actually plays.
         const bundled = isDemoWorkspace() ? (await import("../demo/project")).demoMediaUrls(import.meta.env.BASE_URL) : new Map<string, string>();
         const media = await restoreMedia(project.history.base, controller.signal, bundled);
@@ -122,10 +125,10 @@ export function useProjectPersistence(): void {
 
     const save = async (): Promise<void> => {
       const { history } = useEditorStore.getState();
-      const { repo } = useVcsStore.getState();
+      const { repo, pending } = useVcsStore.getState();
       if (repo === null) return;
       setStatus("saving");
-      const result = await writeProject(serializeProject({ history, repo }));
+      const result = await writeProject(serializeProject({ history, repo, pending }));
       if (!result.ok) {
         setStatus(
           result.status === "unavailable" ? "unavailable" : "error",
@@ -136,12 +139,12 @@ export function useProjectPersistence(): void {
       setStatus("saved");
     };
 
-    const schedule = (): void => {
+    const schedule = (delay = SAVE_DEBOUNCE_MS): void => {
       setStatus("unsaved");
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void save();
-      }, SAVE_DEBOUNCE_MS);
+      }, delay);
     };
 
     const unsubEditor = useEditorStore.subscribe((state, previous) => {
@@ -149,8 +152,8 @@ export function useProjectPersistence(): void {
       schedule();
     });
     const unsubVcs = useVcsStore.subscribe((state, previous) => {
-      if (state.repo === previous.repo) return;
-      schedule();
+      if (state.repo === previous.repo && state.pending === previous.pending) return;
+      schedule(state.pending !== previous.pending ? 0 : SAVE_DEBOUNCE_MS);
     });
 
     return () => {
@@ -172,13 +175,17 @@ export async function resetProject(): Promise<boolean> {
       usePersistenceStore.getState().setStatus(result.status === "unavailable" ? "unavailable" : "error", result.error ?? "could not reset the project");
       return false;
     }
-    if (demo !== null) demo.installDemoProject();
+    if (demo !== null) {
+      demo.installDemoProject();
+      useUiStore.setState({rail: "media", editorTab: "timeline", hiddenTrackIds: [], mutedTrackIds: [], lockedTrackIds: []});
+    }
     else {
       useEditorStore.getState().loadTimeline(emptyTimeline("untitled"));
       useVcsStore.setState({ repo: null, pending: null, diffOverlay: null });
       useVcsStore.getState().ensureRepo();
     }
     usePersistenceStore.getState().setLoadFailure(null);
+    usePersistenceStore.getState().setMergeRecovery(null);
     usePersistenceStore.getState().setMediaWarning(null);
     usePersistenceStore.getState().setStatus("idle");
     return true;

@@ -70,7 +70,7 @@ it("does not trust a clean flag with unresolved conflicts", () => {
   const store = useVcsStore.getState();
   store.beginMerge("feature");
   const r = useVcsStore.getState().pending!.result;
-  store.setResult({ ...r, clean: true, conflicts: [{ kind: "project", field: "fps", base: 30, ours: 25, theirs: 24 }] });
+  useVcsStore.setState({pending: {...useVcsStore.getState().pending!, result: { ...r, clean: true, conflicts: [{ kind: "project", field: "fps", base: 30, ours: 25, theirs: 24 }] }}});
   expect(() => store.commitMerge("bad")).toThrow(/conflicts/);
 });
 it("invalid checkouts and branch names do not mutate the stores", () => {

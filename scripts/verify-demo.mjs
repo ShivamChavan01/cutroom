@@ -169,9 +169,11 @@ try {
       await demo.getByRole("button", {name: "See two versions", exact: true}).click();
       await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
       await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
-      await demo.getByText("Pending merges are not saved.", {exact: false}).waitFor();
+      await demo.getByText("This merge is pending.", {exact: false}).waitFor();
+      await saved(demo);
       await demo.reload(); await ready(demo);
-      assert.equal((await state(demo)).pending, null);
+      assert.notEqual((await state(demo)).pending, null);
+      await demo.getByRole("button", {name: "Cancel", exact: true}).click();
       assert.equal(Object.keys((await state(demo)).repo.commits).length, 4);
       // Skipping the guide leaves the editor usable and can be reversed.
       await demo.getByRole("button", {name: "Skip guide", exact: true}).click();

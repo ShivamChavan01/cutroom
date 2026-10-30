@@ -1,3 +1,4 @@
+import {useUiStore} from "../uiStore";
 import { useMemo } from "react";
 import { diffTimelines, lint } from "@cutroom/engine";
 import { currentCommit } from "../lib/vcs";
@@ -19,6 +20,8 @@ import { Button } from "./ui/button";
 export function StatusBar() {
   const timeline = useEditorStore((state) => state.timeline);
   const authorId = useEditorStore((state) => state.authorId);
+  const pending = useVcsStore((state) => state.pending);
+  const mergeRecovery = usePersistenceStore((state) => state.mergeRecovery);
   const repo = useVcsStore((state) => state.repo);
   const playheadMs = usePlayhead();
 
@@ -53,6 +56,7 @@ export function StatusBar() {
 
   return (
     <>
+      {mergeRecovery !== null && <div role="alert" className="merge-recovery">{mergeRecovery}</div>}
       {loadFailure !== null && (
         <div
           role="alert"
@@ -84,6 +88,7 @@ export function StatusBar() {
           </Button>
         </div>
       )}
+      {status === "error" && message !== null && <div role="alert" className="merge-recovery">{message}</div>}
       {mediaWarning !== null && (
         <div
           role="status"
@@ -100,7 +105,7 @@ export function StatusBar() {
         ) : (
           <span title="Current branch">⎇ {repo?.currentBranch ?? "—"}</span>
         )}
-        {dirty > 0 ? (
+        {pending !== null ? <button className="text-warn" onClick={() => useUiStore.getState().openTab("merge")}>Merge pending · {pending.result.conflicts.length} unresolved</button> : dirty > 0 ? (
           <span className="text-warn" title="Uncommitted changes vs the checked-out commit">
             ● {dirty} uncommitted
           </span>
@@ -112,7 +117,7 @@ export function StatusBar() {
         <span title="Linter issues">
           {Object.keys(timeline.clips).length === 0 ? "nothing to verify" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
         </span>
-        <span className={save.className} title={message ?? undefined}>
+        <span className={save.className} title={message ?? undefined} data-save-status={status}>
           {save.text}
         </span>
         {usage !== null && usage.quota !== null && usage.usage !== null && (

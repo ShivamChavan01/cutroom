@@ -1,16 +1,16 @@
+import {conflictKey} from "@cutroom/engine";
+import type {MergeChoice} from "../lib/mergeSession";
 import { memo, useMemo, type CSSProperties } from "react";
 import {
   type Conflict,
   type MergeResult,
   type Diagnostic,
-  resolveField,
 } from "@cutroom/engine";
 import type { TimeScale } from "../lib/timeScale";
 import { clipsInTimelineWindow, intersectsTimelineWindow, type TimelineWindow } from "../lib/timelineViewport";
 import { DIFF_BORDER } from "./ClipBlock";
 import type { ClipVisual } from "../lib/diffView";
 import type { ConflictBand, ConflictGhost } from "../lib/mergeView";
-import { resolveDeleteModify, resolveOverlap } from "../lib/vcs";
 import { useClipsOnTrack, useEditorStore } from "../store";
 import { ClipBlock } from "./ClipBlock";
 
@@ -30,12 +30,12 @@ interface TrackProps {
   readonly conflictGhosts: readonly ConflictGhost[];
   /** The pending merge the bands came from; null when no merge is pending. */
   readonly mergeResult: MergeResult | null;
-  readonly resolveConflict: (next: MergeResult) => void;
+  readonly resolveConflict: (key: string, choice: MergeChoice) => void;
 }
 
 interface BandChoice {
   readonly label: string;
-  readonly apply: (result: MergeResult) => MergeResult;
+  readonly choice: MergeChoice;
 }
 
 /** The same side-picks the merge list offers; wording must stay identical. */
@@ -52,33 +52,33 @@ function bandChoices(conflict: Conflict): readonly BandChoice[] {
       return [
         {
           label: "Keep ours",
-          apply: (result) => resolveField(result, conflict.clipId, conflict.field, "ours"),
+          choice: "ours",
         },
         {
           label: "Take theirs",
-          apply: (result) => resolveField(result, conflict.clipId, conflict.field, "theirs"),
+          choice: "theirs",
         },
       ];
     case "deleteModify":
       return [
         {
           label: "Keep clip",
-          apply: (result) => resolveDeleteModify(result, conflict.clipId, true),
+          choice: "keep",
         },
         {
           label: "Remove clip",
-          apply: (result) => resolveDeleteModify(result, conflict.clipId, false),
+          choice: "remove",
         },
       ];
     case "overlap":
       return [
         {
           label: `Keep ${conflict.a}`,
-          apply: (result) => resolveOverlap(result, conflict.a, conflict.b),
+          choice: "a",
         },
         {
           label: `Keep ${conflict.b}`,
-          apply: (result) => resolveOverlap(result, conflict.b, conflict.a),
+          choice: "b",
         },
       ];
     default: {
@@ -274,7 +274,7 @@ export const Track = memo(function Track({
                     title={choice.label}
                     onClick={(event) => {
                       event.stopPropagation();
-                      resolveConflict(choice.apply(mergeResult));
+                      try {resolveConflict(conflictKey(band.conflict), choice.choice);} catch (error) {window.alert(error instanceof Error ? error.message : "Could not resolve this conflict.");}
                     }}
                     style={BAND_BUTTON_STYLE}
                   >

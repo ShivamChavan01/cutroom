@@ -26,6 +26,8 @@ export interface LoadFailure {
 }
 
 interface PersistenceStore {
+  readonly mergeRecovery: string | null;
+  readonly setMergeRecovery: (message: string | null) => void;
   readonly hydrated: boolean;
   readonly setHydrated: (hydrated: boolean) => void;
   readonly status: PersistStatus;
@@ -41,6 +43,8 @@ interface PersistenceStore {
 }
 
 export const usePersistenceStore = create<PersistenceStore>()((set) => ({
+  mergeRecovery: null,
+  setMergeRecovery: (mergeRecovery) => set({mergeRecovery}),
   hydrated: false,
   setHydrated: (hydrated) => set({ hydrated }),
   status: "idle",

@@ -35,8 +35,8 @@ it("still explains a clean sequence in the verification panel", () => {
   useEditorStore.getState().loadTimeline({...base, clips: {shot: makeClip({id: "shot", assetId: "sample", trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1})}});
   const html = renderToStaticMarkup(<DiagnosticsPanel />);
   expect(html).toContain('aria-label="diagnostics"');
-  expect(html).toContain("Clean — no issues found.");
-  expect(html).toContain("Linter — 0 issues");
+  expect(html).toContain("No structural findings. Play through the cut to judge picture, sound, and intent.");
+  expect(html).toContain("Timeline checks — 0 findings");
 });
 
 it("exposes review tabs and the current verification panel", () => {
@@ -47,5 +47,12 @@ it("exposes review tabs and the current verification panel", () => {
   expect(html).toContain(">Issues</button>");
   expect(html).toContain(">Activity</button>");
   expect(html).toContain("No clips to verify");
-  expect(html).not.toContain("Clean — no issues found.");
+  expect(html).not.toContain("No structural findings. Play through the cut to judge picture, sound, and intent.");
+});
+
+it("labels structural errors without claiming all editor operations are blocked", () => {
+  useEditorStore.getState().loadTimeline({...emptyTimeline(), clips: {shot: makeClip({id: "shot", assetId: "absent", trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1})}});
+  const html = renderToStaticMarkup(<DiagnosticsPanel />);
+  expect(html).toContain("structural errors");
+  expect(html).not.toContain("blocking");
 });

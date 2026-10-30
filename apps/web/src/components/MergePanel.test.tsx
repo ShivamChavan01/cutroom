@@ -42,7 +42,7 @@ describe("merge panel", () => {
       useVcsStore.setState({
         repo,
         pending: {
-          sourceBranch: "alternate",
+          sourceBranch: "alternate", targetBranch: "main", resolutions: [],
           baseId: "c0", workingTimeline: useEditorStore.getState().timeline, oursId: "c0", theirsId: "c0",
           result: mergeTimelines(timeline, timeline, timeline),
         },
@@ -60,7 +60,7 @@ describe("merge panel", () => {
   it("offers explicit choices for conflicting project settings", () => {
     const base = useEditorStore.getState().timeline;
     useVcsStore.setState({ pending: {
-      sourceBranch: "alternate",
+      sourceBranch: "alternate", targetBranch: "main", resolutions: [],
       baseId: "c0", workingTimeline: useEditorStore.getState().timeline, oursId: "c0", theirsId: "c0",
       result: mergeTimelines(base, { ...base, fps: 25 }, { ...base, fps: 24 }),
     } });
@@ -74,7 +74,7 @@ describe("merge panel", () => {
   const base = { ...emptyTimeline(), assets: { media: { id: "media", kind: "video" as const, duration: 1000, name: "base" } } };
   const ours = { ...base, assets: { media: { ...base.assets.media, name: "ours" } }, tracks: base.tracks.map(t => ({ ...t, name: "ours" })) };
   const theirs = { ...base, assets: { media: { ...base.assets.media, name: "theirs" } }, tracks: base.tracks.map(t => ({ ...t, name: "theirs" })) };
-  useVcsStore.setState({ pending: { sourceBranch: "alternate", baseId: "c0", workingTimeline: ours, oursId: "c0", theirsId: "c0", result: mergeTimelines(base, ours, theirs) } });
+  useVcsStore.setState({ pending: { sourceBranch: "alternate", targetBranch: "main", resolutions: [], baseId: "c0", workingTimeline: ours, oursId: "c0", theirsId: "c0", result: mergeTimelines(base, ours, theirs) } });
   expect(renderedText()).toContain("Asset media.name");
   expect(renderedText()).toContain("Track v1.name");
   expect(renderedText()).toContain("Take theirs");

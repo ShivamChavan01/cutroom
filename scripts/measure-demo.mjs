@@ -66,7 +66,7 @@ try {
       });
       assert.deepEqual(saved.repo.commits[saved.repo.branches.main].parents, ["c2", "c3"]);
       assert.equal(saved.history.base.clips.ending, undefined);
-      assert.match(await demo.locator(".demo-guide").innerText(), /Merged does not mean verified/);
+      assert.match(await demo.locator(".demo-guide").innerText(), /Review the combined cut/);
     }
     results.push({run, initialEditorMs, demoInitializedMs, playbackReadyMs, mediaResources, seekResults});
     await context.close();

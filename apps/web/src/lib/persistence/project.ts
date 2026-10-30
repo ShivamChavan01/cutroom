@@ -1,3 +1,4 @@
+import {assertMergeCurrent, isMergeResolution, recordResolution, startMerge, type PendingMerge} from "../mergeSession";
 import {
   type Asset,
   type Clip,
@@ -7,6 +8,7 @@ import {
   type OpEnvelope,
   type Timeline,
   applyOps,
+  current,
   clipIsWellFormed,
   TRANSFORM_FIELDS,
 } from "@cutroom/engine";
@@ -36,10 +38,12 @@ export interface PersistedRepo {
   readonly detachedAt: string | null;
 }
 
-export interface PersistedProject {
+export interface RestoredProject {
   readonly version: number;
   readonly history: PersistedHistory;
   readonly repo: PersistedRepo;
+  readonly pending: PendingMerge | null;
+  readonly mergeRecovery: string | null;
 }
 
 /** A recoverable problem with stored data. Carries the raw text so the
@@ -56,8 +60,13 @@ export class ProjectLoadError extends Error {
 export function serializeProject(input: {
   readonly history: History;
   readonly repo: Repo;
+  readonly pending?: PendingMerge | null;
 }): string {
-  const project: PersistedProject = {
+  const pending = input.pending;
+  const project = {
+    pending: pending == null ? null : {targetBranch: pending.targetBranch, sourceBranch: pending.sourceBranch,
+      baseId: pending.baseId, oursId: pending.oursId, theirsId: pending.theirsId,
+      workingTimeline: pending.workingTimeline, resolutions: pending.resolutions},
     version: PROJECT_SCHEMA_VERSION,
     history: {
       base: input.history.base,
@@ -139,7 +148,7 @@ function isCommit(value: unknown): value is Commit {
  * reproduce it. A commit whose parent is missing is rejected too — it would
  * render the graph wrong and the merge base would be a lie.
  */
-export function deserializeProject(raw: string): PersistedProject {
+export function deserializeProject(raw: string): RestoredProject {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -236,7 +245,11 @@ export function deserializeProject(raw: string): PersistedProject {
     throw new ProjectLoadError(error instanceof Error ? error.message : "invalid commit graph", raw);
   }
 
+  const restoredRepo: Repo = {commits, branches, currentBranch: repo.currentBranch, detachedAt: repo.detachedAt};
+  const activeTimeline = current({base: history.base, log: envelopes, cursor: history.cursor});
+  const recovered = recoverMerge(parsed.pending, restoredRepo, activeTimeline);
   return {
+    ...recovered,
     version: PROJECT_SCHEMA_VERSION,
     history: {
       base: history.base,
@@ -250,6 +263,25 @@ export function deserializeProject(raw: string): PersistedProject {
       detachedAt: repo.detachedAt,
     },
   };
+}
+
+/** Only input snapshots and recorded choices cross storage; results are replayed. */
+function recoverMerge(value: unknown, repo: Repo, timeline: Timeline): Pick<RestoredProject, "pending" | "mergeRecovery"> {
+  if (value === undefined || value === null) return {pending: null, mergeRecovery: null};
+  try {
+    if (!isRecord(value) || typeof value.sourceBranch !== "string" || typeof value.targetBranch !== "string" ||
+        typeof value.baseId !== "string" || typeof value.oursId !== "string" || typeof value.theirsId !== "string" ||
+        !isTimeline(value.workingTimeline) || !Array.isArray(value.resolutions) || value.resolutions.length > 10000 ||
+        !value.resolutions.every(isMergeResolution)) throw new Error("The saved merge data is malformed.");
+    let pending = startMerge(repo, value.workingTimeline, value.sourceBranch);
+    if (pending.targetBranch !== value.targetBranch || pending.baseId !== value.baseId ||
+        pending.oursId !== value.oursId || pending.theirsId !== value.theirsId) throw new Error("The saved merge references different versions.");
+    assertMergeCurrent(pending, repo, timeline);
+    for (const resolution of value.resolutions) pending = recordResolution(pending, resolution);
+    return {pending, mergeRecovery: null};
+  } catch (error) {
+    return {pending: null, mergeRecovery: `Unfinished merge could not be restored: ${error instanceof Error ? error.message : "invalid merge"} Saved versions and working edits were recovered. Start a new merge from Versions.`};
+  }
 }
 
 /** Rebuild an engine History from persisted state. */

@@ -1,3 +1,4 @@
+import {explainDiagnostic} from "../lib/diagnosticExplanation";
 import { useMemo } from "react";
 import { lint } from "@cutroom/engine";
 import { useEditorStore } from "../store";
@@ -28,14 +29,16 @@ export function DiagnosticsPanel() {
       }}
     >
       <header style={{ color: "var(--color-muted)", marginBottom: 6 }}>
-        Linter — {diagnostics.length} issue{diagnostics.length === 1 ? "" : "s"}
-        {errors > 0 ? ` (${errors} blocking)` : ""}
+        Timeline checks — {diagnostics.length} finding{diagnostics.length === 1 ? "" : "s"}
+        {errors > 0 ? ` (${errors} structural errors)` : ""}
       </header>
       {Object.keys(timeline.clips).length === 0 ? <div className="text-muted">No clips to verify. Build a sequence before checking its structure.</div> : diagnostics.length === 0 ? (
-        <div style={{ color: "var(--color-success)" }}>Clean — no issues found.</div>
+        <div style={{ color: "var(--color-success)" }}>No structural findings. Play through the cut to judge picture, sound, and intent.</div>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {diagnostics.map((diagnostic, index) => (
+          {diagnostics.map((diagnostic, index) => {
+            const explanation = explainDiagnostic(timeline, diagnostic);
+            return (
             <li key={`${diagnostic.rule}-${index}`} style={{ marginBottom: 4 }}>
               <button
                 onClick={() => {
@@ -44,16 +47,18 @@ export function DiagnosticsPanel() {
                   }
                   selectClip(diagnostic.clipIds[0] ?? null);
                 }}
-                className={
+                className={"diagnostic-finding " + (
                   diagnostic.severity === "error"
                     ? "cursor-pointer bg-transparent text-left text-[12px] text-destructive hover:underline"
                     : "cursor-pointer bg-transparent text-left text-[12px] text-warn hover:underline"
-                }
+                )}
               >
-                [{diagnostic.rule}] {diagnostic.message}
+                <span>[{diagnostic.rule}] {diagnostic.message}</span>
+                <span className="finding-location">{explanation.location}</span>
+                <span className="finding-explanation">{explanation.explanation}</span>
               </button>
             </li>
-          ))}
+          );})}
         </ul>
       )}
     </section>

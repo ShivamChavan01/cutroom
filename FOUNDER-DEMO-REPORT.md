@@ -1,5 +1,9 @@
 # Cutroom founder demo implementation and QA
 
+Historical implementation record for the first demo, later shipped as `2481442`.
+Its unshipped status and pending-merge limits below describe that earlier audit.
+For the current local review, see [FOUNDER-READINESS-REPORT.md](FOUNDER-READINESS-REPORT.md).
+
 Implemented locally on 2026-10-30. Starting and final HEAD remains
 `7519d389e2affb5464fc06f42fad2bfef852d1b8`. The starting checkout was clean.
 No commits, pushes, PRs, deployments, dependency installs, or provider-setting
