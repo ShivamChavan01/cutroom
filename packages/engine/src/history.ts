@@ -94,6 +94,7 @@ export function authorsByClip(history: History, timeline: Timeline = current(his
       case "addTrack":
       case "setFrameRate":
       case "renameProject":
+      case "setAssetTags":
         break;
       default:
         if (authors.has(op.clipId) === false) {

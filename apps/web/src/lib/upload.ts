@@ -133,7 +133,7 @@ export async function uploadFiles(
       // Another import may have changed the timeline while metadata loaded.
       const store = useEditorStore.getState();
       const previous = store.timeline.assets[id];
-      store.addAsset({ ...previous, id, kind, ...metadata, name: file.name, mimeType: file.type, bytes: file.size });
+      if (previous === undefined) store.addAsset({id, kind, ...metadata, name: file.name, mimeType: file.type, bytes: file.size});
       const clip = clipForMedia(useEditorStore.getState().timeline, id);
       store.dispatch({
         type: "addClip",

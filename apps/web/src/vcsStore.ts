@@ -1,4 +1,7 @@
-import {assertMergeCurrent, startMerge, recordResolution, type PendingMerge, type MergeChoice} from "./lib/mergeSession";
+import {restoreMedia} from "./lib/persistence/restoreMedia";
+import {useAssetUrls} from "./lib/assets";
+import {usePersistenceStore} from "./lib/persistence/persistenceStore";
+import {assertMergeCurrent, prepareMerge, recordResolution, type PendingMerge, type MergeChoice} from "./lib/mergeSession";
 export type {PendingMerge} from "./lib/mergeSession";
 import { create } from "zustand";
 import {
@@ -40,7 +43,7 @@ interface VcsStore {
   readonly checkoutBranch: (name: string) => void;
   /** Check out a specific commit (detached HEAD) and show its timeline. */
   readonly viewCommit: (commitId: string) => void;
-  readonly beginMerge: (sourceBranch: string) => void;
+  readonly beginMerge: (sourceBranch: string) => "pending" | "up-to-date" | "fast-forward";
   readonly resolveConflict: (key: string, choice: MergeChoice) => void;
   readonly cancelMerge: () => void;
   readonly commitMerge: (message: string) => void;
@@ -95,7 +98,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     requireCleanWorkingTree(repo);
     const next = checkout(repo, name);
     set({ repo: next, pending: null, diffOverlay: null });
-    useEditorStore.getState().loadTimeline(head(next).timeline);
+    loadVersionTimeline(head(next).timeline);
   },
 
   viewCommit: (commitId) => {
@@ -108,16 +111,21 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     // Load the snapshot so the old version is actually watchable.
     const commit = next.commits[commitId];
     if (commit !== undefined) {
-      useEditorStore.getState().loadTimeline(commit.timeline);
+      loadVersionTimeline(commit.timeline);
     }
   },
 
   beginMerge: (sourceBranch) => {
-    const { repo } = get();
-    if (repo === null || sourceBranch === repo.currentBranch) return;
-    if (repo.detachedAt !== null) throw new Error("Check out a branch before merging.");
-    if (get().pending !== null) throw new Error("Finish or cancel the current merge first.");
-    set({pending: startMerge(repo, useEditorStore.getState().timeline, sourceBranch)});
+    const {repo, pending} = get();
+    if (repo === null) throw new Error("Initialize version control before merging.");
+    if (pending !== null) throw new Error("Finish or cancel the current merge first.");
+    const entry = prepareMerge(repo, useEditorStore.getState().timeline, sourceBranch);
+    if (entry.kind === "up-to-date") return entry.kind;
+    if (entry.kind === "fast-forward") {
+      set({repo: {...repo, branches: {...repo.branches, [repo.currentBranch]: entry.source.id}}, pending: null, diffOverlay: null});
+      loadVersionTimeline(entry.source.timeline);
+    } else set({pending: entry.pending});
+    return entry.kind;
   },
 
   resolveConflict: (key, choice) => {
@@ -153,7 +161,7 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
     assertMergeCurrent(pending, repo, editor.timeline);
     const merged = commitToRepo(repo, result.merged, message, editor.authorId, [pending.oursId, pending.theirsId]);
     set({ repo: merged, pending: null, diffOverlay: null });
-    editor.loadTimeline(pending.result.merged);
+    loadVersionTimeline(result.merged);
   },
 }));
 
@@ -161,4 +169,14 @@ function requireCleanWorkingTree(repo: Repo): void {
   if (!isUnchanged(currentCommit(repo).timeline, useEditorStore.getState().timeline)) {
     throw new Error("You have uncommitted changes. Commit them or create a new version before checkout.");
   }
+}
+
+/** New branch snapshots may reference local sources absent from the current bin. */
+function loadVersionTimeline(timeline: Timeline): void {
+  useEditorStore.getState().loadTimeline(timeline);
+  void restoreMedia(timeline, undefined, useAssetUrls.getState()).then(media => {
+    if (useEditorStore.getState().timeline === timeline) usePersistenceStore.getState().setMediaWarning(media.warning);
+  }).catch((error: unknown) => {
+    if (useEditorStore.getState().timeline === timeline) usePersistenceStore.getState().setMediaWarning(error instanceof Error ? error.message : "Could not restore this version's media.");
+  });
 }

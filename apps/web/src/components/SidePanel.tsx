@@ -116,7 +116,7 @@ function MediaPanel() {
     const input = window.prompt("Tags separated by commas", asset.tags?.join(", ") ?? "");
     if (input === null) return;
     try {
-      useEditorStore.getState().addAsset({ ...asset, tags: parseMediaTags(input) });
+      useEditorStore.getState().dispatch({type: "setAssetTags", assetId: asset.id, tags: parseMediaTags(input)});
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not update media tags.");
@@ -171,7 +171,7 @@ function MediaPanel() {
                         <div className="media-item-meta">{asset.width !== undefined && asset.height !== undefined ? `${asset.width} × ${asset.height} · ` : ""}{asset.bytes === undefined ? formatTime(asset.duration) : formatBytes(asset.bytes)}</div>
                       </div>
                     </button>
-                    <button className="media-tag-button" aria-label={`Tag ${label}`} title="Edit media tags" onClick={() => editTags(asset)}><Tag size={11} aria-hidden />{asset.tags?.join(", ") || "Add tag"}</button>
+                    <button className="media-tag-button" aria-label={`Tag ${label}`} title="Edit media tags. Undo and Redo include tag changes." onClick={() => editTags(asset)}><Tag size={11} aria-hidden />{asset.tags?.join(", ") || "Add tag"}</button>
                   </li>
                 );
               })}

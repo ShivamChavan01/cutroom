@@ -30,7 +30,7 @@ export function DemoGuide() {
         case "versions": case "comparison":
           vcs.setDiff(head(liveRepo, "main").timeline, "main", head(liveRepo, "alternate").timeline, "alternate");
           ui.openTab("diff"); break;
-        case "compare": vcs.beginMerge("alternate"); ui.openTab("merge"); break;
+        case "compare": ui.openTab(vcs.beginMerge("alternate") === "pending" ? "merge" : "timeline"); break;
         case "conflict": case "resolved": ui.openTab("merge"); break;
         case "merged": ui.setRail("issues"); ui.openTab("verification"); break;
         case "findings": ui.setRail("assistant"); setHidden(true); break;

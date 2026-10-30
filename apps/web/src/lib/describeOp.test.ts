@@ -33,5 +33,6 @@ describe("describeOp", () => {
     expect(describeOp({type:"addTrack",track:{id:"v2",name:"Video 2",kind:"video",muted:false}})).toBe("added track Video 2");
     expect(describeOp({type:"setFrameRate",fps:24})).toBe("set timeline to 24 fps");
     expect(describeOp({type:"renameProject",name:"North"})).toBe("renamed project to North");
+    expect(describeOp({type:"setAssetTags",assetId:"source",tags:["interview"]})).toBe("updated tags for source");
   });
 });

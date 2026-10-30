@@ -176,4 +176,14 @@ describe("uploadFiles", () => {
     expect(report.skipped).toEqual([{ name: "stalled.mp4", reason: expect.stringContaining("cannot read") }]);
     expect(useEditorStore.getState().timeline.clips).toEqual({});
   });
+
+  it("duplicate import retains existing tags and original source metadata", async () => {
+    const file = new File(["video bytes"], "first.mp4");
+    await uploadFiles([file]);
+    const source = Object.values(useEditorStore.getState().timeline.assets)[0]!;
+    useEditorStore.getState().dispatch({type: "setAssetTags", assetId: source.id, tags: ["keep"]});
+    const report = await uploadFiles([new File(["video bytes"], "renamed.mp4")]);
+    expect(report.skipped).toEqual([]);
+    expect(useEditorStore.getState().timeline.assets[source.id]).toMatchObject({name: "first.mp4", tags: ["keep"]});
+  });
 });

@@ -2,7 +2,7 @@ import {
   conflictKey, isUnchanged, mergeTimelines, resolveField, resolveMetadata, resolveProject,
   type MergeResult, type Timeline,
 } from "@cutroom/engine";
-import {findMergeBase, head, resolveDeleteModify, resolveOverlap, type Repo} from "./vcs";
+import {findMergeBase, head, resolveDeleteModify, resolveOverlap, type Commit, type Repo} from "./vcs";
 
 export type MergeChoice = "ours" | "theirs" | "keep" | "remove" | "a" | "b";
 export interface MergeResolution {
@@ -20,14 +20,29 @@ export interface PendingMerge {
   readonly result: MergeResult;
 }
 
-export function startMerge(repo: Repo, workingTimeline: Timeline, sourceBranch: string): PendingMerge {
-  if (repo.detachedAt !== null || sourceBranch === repo.currentBranch) throw new Error("Choose two different versions before merging.");
+export type MergeEntry = {readonly kind: "up-to-date"}
+  | {readonly kind: "fast-forward"; readonly source: Commit}
+  | {readonly kind: "pending"; readonly pending: PendingMerge};
+
+/** Classify ancestry only after protecting every uncommitted working edit. */
+export function prepareMerge(repo: Repo, workingTimeline: Timeline, sourceBranch: string): MergeEntry {
+  if (repo.detachedAt !== null) throw new Error("Check out a branch before merging.");
   const ours = head(repo), theirs = head(repo, sourceBranch);
+  if (!isUnchanged(ours.timeline, workingTimeline)) throw new Error("Commit your uncommitted changes before merging. Your edits are still intact.");
   const base = findMergeBase(repo, ours.id, theirs.id);
   if (base === null) throw new Error("vcs: no common ancestor");
-  return {targetBranch: repo.currentBranch, sourceBranch, baseId: base.id, workingTimeline,
-    oursId: ours.id, theirsId: theirs.id, resolutions: [],
-    result: mergeTimelines(base.timeline, workingTimeline, theirs.timeline)};
+  if (base.id === theirs.id) return {kind: "up-to-date"};
+  if (base.id === ours.id) return {kind: "fast-forward", source: theirs};
+  return {kind: "pending", pending: {targetBranch: repo.currentBranch, sourceBranch, baseId: base.id,
+    workingTimeline: ours.timeline, oursId: ours.id, theirsId: theirs.id, resolutions: [],
+    result: mergeTimelines(base.timeline, ours.timeline, theirs.timeline)}};
+}
+
+/** Restore only genuine divergent sessions; never move a branch during reload. */
+export function startMerge(repo: Repo, workingTimeline: Timeline, sourceBranch: string): PendingMerge {
+  const entry = prepareMerge(repo, workingTimeline, sourceBranch);
+  if (entry.kind !== "pending") throw new Error("These versions do not need a pending merge. Start merge again from Versions.");
+  return entry.pending;
 }
 
 /** Stable conflict identity plus an explicit choice is the recoverable edit. */

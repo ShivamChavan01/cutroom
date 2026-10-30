@@ -53,12 +53,23 @@ edits or reset before repeating the guide.
   references. Stale or malformed merge data is canceled with a recovery notice;
   saved versions and working edits remain available. Cancel is always explicit
   for a valid merge. Merely reloading never commits it.
+- Commit working edits before merging, including tag changes. A source already
+  included in the current version is an **Already up to date** no-op. If the
+  current version is an ancestor of the source, merging fast-forwards the branch
+  to that existing commit without creating a merge commit. Divergent versions
+  retain the explicit conflict-review workflow above.
+- Tag changes participate in Undo/Redo and saved version snapshots. Importing a
+  source keeps it in the media library when its clip is undone. Reimporting the
+  same content adds another clip without overwriting its existing name or tags.
+  New saves use internal project schema 2; this build reads schema 1 and 2.
+  Older builds cannot read schema 2. Timeline export formats are unchanged.
 - Bundled media is served from this app and restored without OPFS. New uploads
   use the active workspace's OPFS directory. Resetting the sample resets project
   state, retaining uploaded sample files in that isolated directory. Browser
   storage is local to this origin/device, subject to browser quota and eviction.
-  Media referenced only by older commits or other personal branches may still
-  need reimporting; that broader restoration path is not proven here.
+  Checking out a version or fast-forwarding also restores its locally stored
+  media. Missing or evicted files still require reimporting; browser storage
+  cannot recover media that is no longer on disk.
   Use one tab per workspace; concurrent writes to the same workspace do not have
   synchronization or cross-tab conflict protection.
 - Media is self-created procedural graphics and synthesized sound, under CC0.

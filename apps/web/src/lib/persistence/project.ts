@@ -23,7 +23,7 @@ import { findMergeBases, type Commit, type Repo } from "../vcs";
  * testable without a storage layer, and the storage layer stays a thin
  * wrapper that cannot corrupt data it did not create.
  */
-export const PROJECT_SCHEMA_VERSION = 1;
+export const PROJECT_SCHEMA_VERSION = 2;
 
 export interface PersistedHistory {
   readonly base: Timeline;
@@ -158,10 +158,10 @@ export function deserializeProject(raw: string): RestoredProject {
   if (!isRecord(parsed)) {
     throw new ProjectLoadError("stored project is not an object", raw);
   }
-  if (parsed.version !== PROJECT_SCHEMA_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== PROJECT_SCHEMA_VERSION) {
     throw new ProjectLoadError(
       `stored project has version ${String(parsed.version)}, ` +
-        `this build reads ${PROJECT_SCHEMA_VERSION}`,
+        `this build reads 1 and ${PROJECT_SCHEMA_VERSION}`,
       raw,
     );
   }
@@ -318,6 +318,7 @@ export function isOp(value: unknown): value is Op {
     case "setTransform": return clipId && optionalNumbers(value, TRANSFORM_FIELDS);
     case "setFrameRate": return isFiniteNumber(value.fps);
     case "renameProject": return typeof value.name === "string";
+    case "setAssetTags": return typeof value.assetId === "string" && Array.isArray(value.tags) && value.tags.every(tag => typeof tag === "string");
     default: return false;
   }
 }

@@ -338,3 +338,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .diagnostic-finding { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 8px 0; }
 .finding-location { color: var(--color-foreground); font-family: monospace; }
 .finding-explanation { color: var(--color-muted); font-size: 12px; line-height: 1.6; }
+.inspector-number { flex-wrap: wrap; }
+.inspector-number-error { flex-basis: 100%; color: var(--color-destructive); font-size: 11px; line-height: 1.5; }

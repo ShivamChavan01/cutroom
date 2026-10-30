@@ -39,7 +39,8 @@ export type Op =
   | { readonly type: "setTransform"; readonly clipId: string; readonly x?: number; readonly y?: number; readonly scaleX?: number; readonly scaleY?: number; readonly rotation?: number }
   | { readonly type: "addTrack"; readonly track: Track }
   | { readonly type: "setFrameRate"; readonly fps: number }
-  | { readonly type: "renameProject"; readonly name: string };
+  | { readonly type: "renameProject"; readonly name: string }
+  | { readonly type: "setAssetTags"; readonly assetId: string; readonly tags: readonly string[] };
 
 export interface OpEnvelope {
   readonly op: Op;
@@ -309,6 +310,16 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
         throw new Error(`applyOp: invalid frame rate ${op.fps}`);
       }
       return { ...timeline, fps: op.fps };
+    }
+
+    case "setAssetTags": {
+      const asset = timeline.assets[op.assetId];
+      if (asset === undefined) throw new Error(`applyOp: unknown asset ${op.assetId}`);
+      if (!Array.isArray(op.tags) || op.tags.length > 12 || op.tags.some(tag => typeof tag !== "string" || tag.trim() !== tag || tag.length === 0 || tag.length > 40) || new Set(op.tags.map(tag => tag.toLowerCase())).size !== op.tags.length) {
+        throw new Error("Use at most 12 distinct tags, each 1 to 40 characters.");
+      }
+      if ((asset.tags ?? []).length === op.tags.length && op.tags.every((tag, index) => asset.tags?.[index] === tag)) return timeline;
+      return putAsset(timeline, {...asset, tags: [...op.tags]});
     }
 
     case "renameProject": {

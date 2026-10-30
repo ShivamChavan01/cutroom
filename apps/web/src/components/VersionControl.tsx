@@ -138,6 +138,7 @@ export function VersionControl() {
   const [message, setMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [mergeSource, setMergeSource] = useState("");
+  const [mergeFeedback, setMergeFeedback] = useState<{repo: Repo; message: string} | null>(null);
   const [diffBase, setDiffBase] = useState("working");
   const [diffTarget, setDiffTarget] = useState("working");
 
@@ -354,6 +355,7 @@ export function VersionControl() {
 
       <div className="vcs-section">
         <h3 className="vcs-label">Merge branch</h3>
+        {dirty === 0 && mergeFeedback?.repo === repo && <p role="status" className="vcs-summary">{mergeFeedback.message}</p>}
         <div className="vcs-row">
           <select
             aria-label="Merge source"
@@ -374,8 +376,14 @@ export function VersionControl() {
             disabled={mergeSource === ""}
             onClick={() => {
               try {
-                store.beginMerge(mergeSource);
-                openTab("merge");
+                setMergeFeedback(null);
+                const outcome = store.beginMerge(mergeSource);
+                if (outcome === "pending") openTab("merge");
+                else {
+                  openTab("timeline");
+                  const current = useVcsStore.getState().repo;
+                  if (current !== null) setMergeFeedback({repo: current, message: outcome === "up-to-date" ? "Already up to date. No new edits to combine." : `Fast-forwarded ${current.currentBranch} to ${current.branches[current.currentBranch]}. No extra commit was created.`});
+                }
               } catch (error) {
                 alert(error instanceof Error ? error.message : "merge failed");
               }

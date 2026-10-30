@@ -81,6 +81,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
         throw new Error("This track is locked. Unlock it before editing.");
       }
       const timeline = applyOp(state.timeline, op);
+      if (timeline === state.timeline) return state;
       const history = record(state.history, op, state.authorId);
       return { history, timeline };
     }),
@@ -124,13 +125,12 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       authorId: state.authorId,
     })),
 
+  // Source registration is durable across clip undo; metadata edits use Ops.
   addAsset: (asset) =>
-    set((state) => ({
-      ...derive({
-        ...state.history,
-        base: putAsset(state.history.base, asset),
-      }),
-    })),
+    set((state) => {
+      if (state.timeline.assets[asset.id] !== undefined) throw new Error("This source is already registered. Change its metadata through an edit operation.");
+      return derive({...state.history, base: putAsset(state.history.base, asset)});
+    }),
 
   restoreHistory: (history) =>
     set((state) => ({

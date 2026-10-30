@@ -65,8 +65,8 @@ it("installs and resets the sample through the real stores without mutating the 
   const { useVcsStore } = await import("../../vcsStore");
   installDemoProject();
   const snapshot = JSON.stringify(useEditorStore.getState().timeline);
-  useEditorStore.getState().dispatch({type: "deleteClip", clipId: "opening"});
   useVcsStore.getState().beginMerge(DEMO_BRANCH);
+  useEditorStore.getState().dispatch({type: "deleteClip", clipId: "opening"});
   expect(useVcsStore.getState().pending).not.toBeNull();
   installDemoProject();
   expect(JSON.stringify(useEditorStore.getState().timeline)).toBe(snapshot);

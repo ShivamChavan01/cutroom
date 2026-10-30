@@ -14,8 +14,8 @@ it("resets only demo state, leaving the persisted personal project byte-for-byte
   await writeProject("sample edits", "current.demo-v1");
   vi.stubGlobal("location", {search: "?demo=1"});
   installDemoProject();
-  useEditorStore.getState().dispatch({type: "deleteClip", clipId: "opening"});
   useVcsStore.getState().beginMerge("alternate");
+  useEditorStore.getState().dispatch({type: "deleteClip", clipId: "opening"});
   expect(await resetProject()).toBe(true);
   expect((await readProject("current")).value).toBe("personal data");
   expect((await readProject("current.demo-v1")).value).toBeUndefined();

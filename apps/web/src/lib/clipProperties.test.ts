@@ -31,3 +31,8 @@ describe("clip property edits", () => {
     expect(clipPropertyOp(clip, field, 45)).toEqual({ type: "setTransform", clipId: "a", [field]: 45 });
   });
 });
+
+it.each(["start", "inPoint", "outPoint"] as const)("rejects unrepresentable %s times before dispatch", field => {
+  const clip = {id: "test", trackId: "v1", assetId: "source", start: 0, inPoint: 0, outPoint: 1000, duration: 1000, volume: 1};
+  expect(() => clipPropertyOp(clip, field, 1e20)).toThrow(/supported millisecond range/);
+});

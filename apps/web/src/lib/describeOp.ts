@@ -35,6 +35,8 @@ export function describeOp(op: Op): string {
       return `added track ${op.track.name}`;
     case "setFrameRate":
       return `set timeline to ${op.fps} fps`;
+    case "setAssetTags":
+      return `updated tags for ${op.assetId}`;
     case "renameProject":
       return `renamed project to ${op.name}`;
   }

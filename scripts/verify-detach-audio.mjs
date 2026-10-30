@@ -99,14 +99,19 @@ try {
   assert.equal(restoredVolume, 0.65);
   await page.keyboard.press("Control+Shift+z");
   await until(async () => Object.keys((await import("/src/store.ts")).useEditorStore.getState().timeline.clips).length === 2);
+  const expectedHistory = await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().history);
+  assert.equal(expectedHistory.log[expectedHistory.cursor - 1]?.op.type, "detachAudio");
+  assert.equal(expectedHistory.log[expectedHistory.cursor]?.op.type, "trimClip", "The undone trim must remain available to redo");
   await until(async () => {
     const saved = await (await import("/src/lib/persistence/storage.ts")).readProject();
     if (!saved.ok || !saved.value) return false;
     const stored = JSON.parse(saved.value);
-    return stored.history.cursor === stored.history.log.length && stored.history.log.at(-1)?.op.type === "detachAudio";
+    const live = (await import("/src/store.ts")).useEditorStore.getState().history;
+    return JSON.stringify(stored.history) === JSON.stringify(live);
   });
   await page.reload();
   await until(async () => Object.keys((await import("/src/store.ts")).useEditorStore.getState().timeline.clips).length === 2);
+  assert.deepEqual(await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().history), expectedHistory);
   await page.getByRole("button", { name: "Fit timeline", exact: true }).click();
   await until(() => Boolean(document.querySelector('[data-track-id="a1"] [data-waveform-state="ready"]')));
   await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().setPlayhead(2000));

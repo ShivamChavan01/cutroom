@@ -9,6 +9,15 @@ beforeEach(() => {
   useVcsStore.getState().ensureRepo();
   useVcsStore.getState().createBranch("feature");
 });
+function diverge() {
+  const vcs = useVcsStore.getState();
+  useEditorStore.getState().dispatch({type: "renameProject", name: "Our committed cut"});
+  vcs.commitCurrent("Our cut");
+  vcs.checkoutBranch("feature");
+  useEditorStore.getState().dispatch({type: "setFrameRate", fps: 25});
+  vcs.commitCurrent("Their cut");
+  vcs.checkoutBranch("main");
+}
 it.each(["checkoutBranch", "viewCommit"] as const)("%s cannot discard dirty work", action => {
   useEditorStore.getState().dispatch({ type: "renameProject", name: "Unsaved" });
   const before = useEditorStore.getState();
@@ -22,6 +31,7 @@ it("reports detached commit failures", () => {
   expect(() => useVcsStore.getState().commitCurrent("edit")).toThrow(/detached/i);
 });
 it("refuses a merge commit after working edits changed during resolution", () => {
+  diverge();
   useVcsStore.getState().beginMerge("feature");
   useEditorStore.getState().dispatch({ type: "renameProject", name: "Later edit" });
   expect(() => useVcsStore.getState().commitMerge("merge")).toThrow(/changed/i);
@@ -51,6 +61,8 @@ it("cancel keeps the working history and merge commit records both parents", () 
   store.commitCurrent("fps");
   store.checkoutBranch("main");
   useEditorStore.getState().dispatch({ type: "renameProject", name: "Our work" });
+  expect(() => store.beginMerge("feature")).toThrow(/uncommitted/);
+  store.commitCurrent("Our work");
   const history = useEditorStore.getState().history;
   store.beginMerge("feature");
   expect(() => store.checkoutBranch("feature")).toThrow(/merge/);
@@ -62,11 +74,12 @@ it("cancel keeps the working history and merge commit records both parents", () 
   store.beginMerge("feature");
   store.commitMerge("merge fps");
   const repo = useVcsStore.getState().repo!;
-  expect(repo.commits[repo.branches.main!]?.parents).toEqual(["c0", "c1"]);
+  expect(repo.commits[repo.branches.main!]?.parents).toEqual(["c2", "c1"]);
   expect(useEditorStore.getState().timeline).toMatchObject({ id: "Our work", fps: 25 });
   expect(useVcsStore.getState().pending).toBeNull();
 });
 it("does not trust a clean flag with unresolved conflicts", () => {
+  diverge();
   const store = useVcsStore.getState();
   store.beginMerge("feature");
   const r = useVcsStore.getState().pending!.result;

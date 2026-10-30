@@ -1,4 +1,27 @@
-## Current update: founder readiness review, 2026-10-30
+## Current update: agent-reported issues 1–5, 2026-10-30
+
+Starting checkout: clean main `9d27bad`. Fixes are local; no commit, push,
+deployment or GitHub issue mutation. See [ISSUE-FIX-REPORT.md](ISSUE-FIX-REPORT.md)
+for reproductions, policy decisions, evidence and compatibility limits.
+
+Merging now requires a committed working timeline. Ancestry classifies no-op,
+fast-forward and divergent merges; only the last creates a pending session.
+Fast-forward reuses the source commit and restores its media. Version checkout
+and inspection also restore locally stored media. Old dirty/redundant pending
+sessions recover with a notice while preserving graph and working history.
+Tag edits use validated operations and Undo/Redo rather than replacing the
+history base. Duplicate imports retain existing source metadata. Source
+registration stays available after clip undo. Internal saves use schema 2 and
+read schemas 1 and 2; older clients cannot read new saves. Rejected numeric
+drafts roll back and show accessible errors beside the field.
+
+Verification: 766 tests / 85 files, both typechecks and production build passed.
+Chrome passed the five issue scenarios, production-build readiness checks at all
+four desktop sizes, and eight existing browser suites. No paid AI calls.
+Full detail, injected/test-harness failures and corrected reruns are in the
+report. Previous sections describe historical snapshots and their limitations.
+
+## Historical update: founder readiness review, 2026-10-30
 
 Starts at clean main `2481442`; all improvements remain local, uncommitted and
 undeployed. See FOUNDER-READINESS-REPORT.md, QA-FINDINGS.md, TEST-RESULTS.md and
