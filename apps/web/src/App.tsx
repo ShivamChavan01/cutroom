@@ -1,3 +1,6 @@
+import { isDemoWorkspace } from "./lib/workspace";
+import { DemoGuide } from "./components/DemoGuide";
+import { usePersistenceStore } from "./lib/persistence/persistenceStore";
 import { useEffect } from "react";
 import { ChevronDown, ShieldCheck } from "lucide-react";
 import { useUiStore } from "./uiStore";
@@ -24,12 +27,14 @@ function isTypingTarget(event: KeyboardEvent): boolean {
     target !== null &&
     (target.tagName === "INPUT" ||
       target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
       target.isContentEditable)
   );
 }
 
 export function App() {
   useProjectPersistence();
+  const hydrated = usePersistenceStore((state) => state.hydrated);
   const rail = useUiStore((state) => state.rail);
   const reviewOpen = useUiStore((state) => state.reviewOpen);
   const setReviewOpen = useUiStore((state) => state.setReviewOpen);
@@ -72,9 +77,13 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  if (!hydrated) return <main className="workspace-loading" style={{inset: 0}} role="status">Restoring workspace…</main>;
+
   return (
     <div className="studio-shell editorial-shell flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TopBar />
+      <div className="mobile-notice" role="note">Cutroom editing is designed for desktop. Use a screen at least 1024px wide for the complete workspace.</div>
+      {hydrated && isDemoWorkspace() && <DemoGuide />}
       <CommandPalette />
       <div className="editorial-body">
       <ActivityBar />
@@ -83,7 +92,7 @@ export function App() {
         groupId="editorial-workspace"
         orientation="vertical"
         panelIds={["monitors", "sequence"]}
-        defaultLayout={{ monitors: 63, sequence: 37 }}
+        defaultLayout={{ monitors: 55, sequence: 45 }}
       >
         <Panel id="monitors" minSize={30}>
           <ResizableGroup

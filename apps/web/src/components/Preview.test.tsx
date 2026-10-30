@@ -28,7 +28,7 @@ describe("preview controls", () => {
     expect(html).toContain('value="1"');
     expect(html).toContain('value="0.5"');
     expect(html).toContain('aria-label="Enter fullscreen"');
-    expect(html).toContain("Ready for your first cut.");
+    expect(html).toContain("Your sequence plays here.");
   });
 
   it("uses the project frame rate in transport timecode", () => {

@@ -26,6 +26,8 @@ export interface LoadFailure {
 }
 
 interface PersistenceStore {
+  readonly hydrated: boolean;
+  readonly setHydrated: (hydrated: boolean) => void;
   readonly status: PersistStatus;
   readonly message: string | null;
   readonly loadFailure: LoadFailure | null;
@@ -39,6 +41,8 @@ interface PersistenceStore {
 }
 
 export const usePersistenceStore = create<PersistenceStore>()((set) => ({
+  hydrated: false,
+  setHydrated: (hydrated) => set({ hydrated }),
   status: "idle",
   message: null,
   loadFailure: null,

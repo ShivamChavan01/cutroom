@@ -1,3 +1,4 @@
+import { demoHref, isDemoWorkspace } from "../lib/workspace";
 import { useEffect, useState } from "react";
 import { type Asset } from "@cutroom/engine";
 import { useAssetUrls } from "../lib/assets";
@@ -151,9 +152,10 @@ function MediaPanel() {
           {visible.length === 0 ? (
             <div className="media-empty">
               {section === "graphics" ? <ImageIcon aria-hidden className="size-8" /> : <Film aria-hidden className="size-8" />}
-              <h3>{query !== "" || tag !== "" ? "No matching media" : section === "graphics" ? "Import your graphics" : "Import your footage"}</h3>
-              <p>{query !== "" || tag !== "" ? "Try another search or clear the selected tag." : "Add media to start editing. You can also drop files on the timeline."}</p>
-              <UploadButton icon={<Upload />} label={section === "graphics" ? "Import graphics" : "Import video"} accept={section === "graphics" ? "image/*" : "video/*,audio/*"} />
+              <h3>{section === "footage" && entries.length === 0 ? "See how edits come together" : query !== "" || tag !== "" ? "No matching media" : section === "graphics" ? "Import your graphics" : "Import your footage"}</h3>
+              <p>{section === "footage" && entries.length === 0 ? "Explore branching, a real timing conflict, and verification in a playable sample." : query !== "" || tag !== "" ? "Try another search or clear the selected tag." : "Add media to start editing. You can also drop files on the timeline."}</p>
+              {section === "footage" && entries.length === 0 && !isDemoWorkspace() && <><a className="demo-start" href={demoHref()} target="_blank" rel="noopener noreferrer">Try demo project <span>Recommended · opens a separate tab ↗</span></a><small className="demo-safety">Your project stays untouched.</small></>}
+              <UploadButton icon={<Upload />} label={section === "graphics" ? "Import graphics" : "Import your own footage"} accept={section === "graphics" ? "image/*" : "video/*,audio/*"} />
             </div>
           ) : (
             <ul className={`media-list media-grid${view === "list" ? " is-list" : ""}`}>
@@ -190,7 +192,7 @@ function VersionsPanel() {
         <TabsTrigger value="history">History</TabsTrigger>
         <TabsTrigger value="graph">Graph</TabsTrigger>
       </TabsList>
-      <TabsContent value="history"><VersionControl /></TabsContent>
+      <TabsContent value="history"><p className="panel-context">Save editing decisions, compare versions, then combine them with conflicts for you to resolve.</p><VersionControl /></TabsContent>
       <TabsContent value="graph"><CommitGraph /></TabsContent>
     </Tabs>
   );

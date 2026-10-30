@@ -125,7 +125,7 @@ try {
   await page.getByPlaceholder("commit message",{exact:true}).fill("Editorial feature check");
   await page.getByRole("button",{name:"Commit",exact:true}).click();
   await page.getByText("saved",{exact:true}).waitFor();
-  await page.locator("header").first().getByRole("button",{name:"Export",exact:true}).click();
+  await page.locator("header").first().getByRole("button",{name:"Export timeline",exact:true}).click();
   const downloadPromise=page.waitForEvent("download");
   await page.getByRole("menuitem").filter({hasText:"Cutroom timeline"}).click();
   const download=await downloadPromise;const file=path.join(out,"editorial-export.cutroom.json");await download.saveAs(file);

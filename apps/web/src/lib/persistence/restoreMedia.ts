@@ -11,14 +11,19 @@ interface MediaRestoreResult {
 const CONCURRENT_READS = 4;
 
 /** Restore URLs together so a large media library causes one registry update. */
-export async function restoreMedia(timeline: Timeline, signal?: AbortSignal): Promise<MediaRestoreResult> {
-  const assetIds = Object.keys(timeline.assets);
+export async function restoreMedia(timeline: Timeline, signal?: AbortSignal, bundled: ReadonlyMap<string, string> = new Map()): Promise<MediaRestoreResult> {
+  const bundledEntries = Object.keys(timeline.assets).flatMap((id): [string, string][] => {
+    const url = bundled.get(id);
+    return url === undefined ? [] : [[id, url]];
+  });
+  if (!signal?.aborted) registerAssetUrls(bundledEntries);
+  const assetIds = Object.keys(timeline.assets).filter((id) => !bundled.has(id));
   if (assetIds.length === 0 || signal?.aborted) {
-    return { restored: 0, missing: 0, warning: null };
+    return { restored: signal?.aborted ? 0 : bundledEntries.length, missing: 0, warning: null };
   }
   if (!isOpfsAvailable()) {
     return {
-      restored: 0,
+      restored: bundledEntries.length,
       missing: assetIds.length,
       warning: "this browser has no private file system — stored media cannot be restored",
     };
@@ -60,7 +65,7 @@ export async function restoreMedia(timeline: Timeline, signal?: AbortSignal): Pr
   }
   registerAssetUrls(entries);
   return {
-    restored: entries.length,
+    restored: entries.length + bundledEntries.length,
     missing,
     warning: missing > 0 ? `${missing} of ${assetIds.length} stored media file(s) are not on disk` : null,
   };

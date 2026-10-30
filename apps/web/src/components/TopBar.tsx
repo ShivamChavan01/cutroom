@@ -1,3 +1,4 @@
+import { demoHref, isDemoWorkspace } from "../lib/workspace";
 import { Upload } from "lucide-react";
 import { UploadButton } from "./UploadButton";
 import { ExportMenu } from "./ExportMenu";
@@ -22,6 +23,7 @@ export function TopBar() {
       </Badge>
       <span className="studio-topbar-spacer" />
       <UploadButton icon={<Upload />} label="Add video" />
+      <a className="workspace-link" href={isDemoWorkspace() ? "?" : demoHref()} target="_blank" rel="noopener noreferrer">{isDemoWorkspace() ? "Personal workspace ↗" : "Try demo project ↗"}</a>
       <ExportMenu />
       <span title="Local author identity" className="text-xs text-muted">
         <span className="studio-avatar">{authorId.slice(0, 1).toUpperCase()}</span>

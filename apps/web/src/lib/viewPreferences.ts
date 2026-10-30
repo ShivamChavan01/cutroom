@@ -1,3 +1,5 @@
+import { workspaceKey } from "./workspace";
+
 export interface ViewPreferences {
   readonly hiddenTrackIds: readonly string[];
   readonly mutedTrackIds: readonly string[];
@@ -7,7 +9,7 @@ export const VIEW_PREFERENCES_KEY = "cutroom.view-preferences";
 
 export function readViewPreferences(storage: Pick<Storage, "getItem">): ViewPreferences | null {
   try {
-    const raw = storage.getItem(VIEW_PREFERENCES_KEY);
+    const raw = storage.getItem(workspaceKey(VIEW_PREFERENCES_KEY));
     if (raw === null) return null;
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
@@ -22,6 +24,6 @@ export function readViewPreferences(storage: Pick<Storage, "getItem">): ViewPref
 }
 
 export function writeViewPreferences(storage: Pick<Storage, "setItem">, value: ViewPreferences): void {
-  try { storage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify({ hiddenTrackIds: value.hiddenTrackIds, mutedTrackIds: value.mutedTrackIds, lockedTrackIds: value.lockedTrackIds })); }
+  try { storage.setItem(workspaceKey(VIEW_PREFERENCES_KEY), JSON.stringify({ hiddenTrackIds: value.hiddenTrackIds, mutedTrackIds: value.mutedTrackIds, lockedTrackIds: value.lockedTrackIds })); }
   catch { /* Workspace preferences are optional when storage is unavailable. */ }
 }

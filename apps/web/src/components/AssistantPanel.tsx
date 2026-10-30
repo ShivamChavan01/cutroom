@@ -10,6 +10,19 @@ import { Button } from "./ui/button";
 type Proposal = ReturnType<typeof previewPlan>;
 type State = { kind: "idle" } | { kind: "loading" } | { kind: "ready"; proposal: Proposal } | { kind: "error"; message: string } | { kind: "applied"; count: number };
 
+export function AssistantAvailability({ configuration, error, empty, findings, needsCode }: {
+  configuration: Awaited<ReturnType<typeof assistantConfiguration>> | null;
+  error: string | null; empty: boolean; findings: number; needsCode: boolean;
+}) {
+  return <div aria-live="polite" className="assistant-availability">
+    {error !== null ? <p role="status" className="assistant-error">Assistant unavailable. {error}</p> : configuration === null ? <p role="status">Checking assistant availability…</p> : !configuration.configured ? <p role="status">Assistant unavailable: server configuration is required. Contact the project owner.</p> : <>
+      <p role="status">{configuration.provider} assistant available · {configuration.model}</p>
+      {needsCode && <p>Reviewer access code required before requesting an explanation.</p>}
+    </>}
+    {empty ? <p>Add clips or open the sample project before requesting verification advice.</p> : findings === 0 && <p>No structural findings to explain. You can ask about the sequence; this does not verify its visual or audio quality.</p>}
+  </div>;
+}
+
 export function AssistantAccessCode({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return <div>
     <label htmlFor="assistant-access-code">Assistant access code</label>
@@ -92,20 +105,21 @@ export function AssistantPanel() {
     } catch (cause) { setState({ kind: "error", message: cause instanceof Error ? cause.message : "Could not apply the proposal." }); }
   };
   const stale = state.kind === "ready" && state.proposal.before !== timeline;
+  const empty = Object.keys(timeline.clips).length === 0;
   const changed = state.kind === "ready" && state.proposal.diff.changes.length > 0;
   return <section className="assistant-panel" aria-label="AI verification assistant">
     <div className="panel-heading"><h2>Assistant</h2><span title={configuration?.model}>{configuration?.provider ?? "AI provider"}</span></div>
     <h3>Explain verification issues</h3>
     <p>Explain verification findings and review suggested edits before changing your timeline.</p>
     <div className="assistant-issue-count">{issues.length} current {issues.length === 1 ? "finding" : "findings"}</div>
-    <form onSubmit={(event) => { event.preventDefault(); void request(); }}>
+    <AssistantAvailability configuration={configuration} error={configurationError} empty={empty} findings={issues.length} needsCode={configuration?.accessRequired === true && !accessCode.trim()} />
+    <form onSubmit={(event) => { event.preventDefault(); if (!empty && configuration?.configured && (!configuration.accessRequired || accessCode.trim()) && pendingMerge === null && state.kind !== "loading" && prompt.trim()) void request(); }}>
       {configuration?.accessRequired && <AssistantAccessCode value={accessCode} onChange={setAccessCode} />}
       <label htmlFor="assistant-prompt">What needs attention?</label>
       <textarea id="assistant-prompt" value={prompt} maxLength={2000} rows={5} disabled={state.kind === "loading"} onChange={(event) => setPrompt(event.target.value)} />
       <p className="assistant-disclosure">Sends your prompt, clip and asset names, timing and verification findings to {configuration?.provider ?? "the configured AI provider"}. Media files stay on this computer. The assistant cannot watch or listen to footage.</p>
-      {configurationError !== null && <p role="status" className="assistant-error">{configurationError}</p>}
-      {configuration !== null && !configuration.configured && <p role="status" className="assistant-error">The assistant needs server configuration. Contact the project owner.</p>}
-      <div className="assistant-actions"><Button type="submit" disabled={!prompt.trim() || state.kind === "loading" || pendingMerge !== null || configuration === null || !configuration.configured || (configuration.accessRequired && !accessCode.trim())}>{state.kind === "loading" ? "Reviewing issues…" : "Explain & propose fixes"}</Button>
+      {!prompt.trim() && <p role="status">Enter a question to request an explanation.</p>}
+      <div className="assistant-actions"><Button type="submit" disabled={empty || !prompt.trim() || state.kind === "loading" || pendingMerge !== null || configuration === null || !configuration.configured || (configuration.accessRequired && !accessCode.trim())}>{state.kind === "loading" ? "Reviewing issues…" : "Explain & propose fixes"}</Button>
         {state.kind === "loading" && <Button type="button" variant="outline" onClick={() => { controller.current?.abort(); setState({ kind: "idle" }); }}>Cancel</Button>}
       </div>
     </form>
@@ -113,7 +127,9 @@ export function AssistantPanel() {
     <div aria-live="polite">
       {state.kind === "error" && <p role="alert" className="assistant-error">{state.message}</p>}
       {state.kind === "applied" && <p role="status">Applied {state.count} {state.count === 1 ? "edit" : "edits"}. Review them in Versions; use Undo to reverse one edit at a time.</p>}
+      {state.kind === "loading" && <p role="status">Request in progress. Your timeline stays unchanged until you review and apply a proposal.</p>}
       {state.kind === "ready" && <>
+        <p role="status">Proposal ready for review. No edits have been applied.</p>
         <ProposalReview proposal={state.proposal} />
         {stale && <p role="status">The timeline changed. Generate a new proposal before applying.</p>}
         {state.proposal.ops.length > 0 && <Button onClick={apply} disabled={stale || !changed || pendingMerge !== null}>Apply {state.proposal.ops.length} proposed {state.proposal.ops.length === 1 ? "edit" : "edits"}</Button>}

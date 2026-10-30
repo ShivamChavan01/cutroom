@@ -1,3 +1,5 @@
+import { workspaceKey } from "./workspace";
+
 /**
  * Panel layout persistence. Sizes are stored per group id in localStorage
  * so a reload restores the workspace the user left.
@@ -33,7 +35,7 @@ export function readLayout(
   storage: Pick<Storage, "getItem">,
   groupId: string,
 ): PanelLayout | null {
-  return parseLayout(storage.getItem(`${LAYOUT_STORAGE_KEY}.${groupId}`));
+  return parseLayout(storage.getItem(`${workspaceKey(LAYOUT_STORAGE_KEY)}.${groupId}`));
 }
 
 export function writeLayout(
@@ -42,7 +44,7 @@ export function writeLayout(
   layout: PanelLayout,
 ): void {
   try {
-    storage.setItem(`${LAYOUT_STORAGE_KEY}.${groupId}`, JSON.stringify(layout));
+    storage.setItem(`${workspaceKey(LAYOUT_STORAGE_KEY)}.${groupId}`, JSON.stringify(layout));
   } catch {
     // Private mode / quota: layout persistence is a nicety, never a
     // failure mode for the app.

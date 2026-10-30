@@ -1,3 +1,5 @@
+import { workspaceKey } from "../workspace";
+
 /**
  * Media storage in OPFS (Origin Private File System), keyed by the asset's
  * content hash.
@@ -39,7 +41,7 @@ async function mediaDirectory(): Promise<FileSystemDirectoryHandle> {
     throw new Error("OPFS is not available in this browser");
   }
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(MEDIA_DIR, { create: true });
+  return root.getDirectoryHandle(workspaceKey(MEDIA_DIR), { create: true });
 }
 
 /** Free space according to the browser, or null if it will not say. */

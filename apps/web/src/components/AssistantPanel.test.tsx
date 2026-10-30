@@ -48,3 +48,17 @@ describe("assistant presentation", () => {
     expect(deleted).toContain("1 removed");
   });
 });
+
+it("explains provider loading, access requirements, empty timelines, and unavailable states", async () => {
+  const { AssistantAvailability } = await import("./AssistantPanel");
+  const render = (configuration: Parameters<typeof AssistantAvailability>[0]["configuration"], error: string | null, empty: boolean, findings: number, needsCode: boolean) => renderToStaticMarkup(<AssistantAvailability {...{configuration, error, empty, findings, needsCode}} />);
+  expect(render(null, null, true, 0, false)).toContain("Checking assistant availability");
+  expect(render(null, null, true, 0, false)).toContain("Add clips");
+  const config = {provider: "River" as const, model: "test-model", configured: true, accessRequired: true};
+  expect(render(config, null, false, 1, true)).toContain("Reviewer access code required");
+  expect(render(config, null, false, 1, false)).not.toContain("code required");
+  expect(render(config, null, false, 0, false)).toContain("No structural findings");
+  expect(render(config, null, false, 0, false)).toContain("River assistant available");
+  expect(render({...config, configured: false}, null, false, 1, false)).toContain("server configuration is required");
+  expect(render(null, "Connection failed", false, 1, false)).toContain("Assistant unavailable. Connection failed");
+});

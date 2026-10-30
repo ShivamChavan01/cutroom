@@ -56,14 +56,15 @@ export function ExportMenu({ sidebar = false }: { sidebar?: boolean } = {}) {
 
   return (
     <div className="relative" ref={rootRef}>
-      {sidebar ? <SidebarMenuButton {...triggerProps}><Download aria-hidden /><span>Export</span></SidebarMenuButton> : <Button size="sm" {...triggerProps}>
-        <Download /> Export
+      {sidebar ? <SidebarMenuButton {...triggerProps}><Download aria-hidden /><span>Export timeline</span></SidebarMenuButton> : <Button size="sm" {...triggerProps}>
+        <Download /> Export timeline
       </Button>}
       {open && (
         <div
           role="menu"
           className="absolute right-0 top-8 z-50 w-80 rounded-lg border border-border bg-card p-1 shadow-2xl"
         >
+          <p className="export-description">Timeline files for other editors. Rendered MP4 export is not available.</p>
           {EXPORT_FORMATS.map((format) => (
             <button
               key={format.id}

@@ -1,3 +1,5 @@
+import { workspaceKey } from "../workspace";
+
 /**
  * The storage half: IndexedDB, with a graceful path when it is not there.
  *
@@ -61,13 +63,13 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function readProject(): Promise<StorageResult<string | undefined>> {
+export async function readProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<string | undefined>> {
   try {
     const db = await openDatabase();
     try {
       const value = await new Promise<string | undefined>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readonly");
-        const request = tx.objectStore(STORE_NAME).get(PROJECT_KEY);
+        const request = tx.objectStore(STORE_NAME).get(key);
         request.onsuccess = () => resolve(request.result as string | undefined);
         request.onerror = () =>
           reject(request.error ?? new Error("could not read the project"));
@@ -86,13 +88,13 @@ export async function readProject(): Promise<StorageResult<string | undefined>> 
   }
 }
 
-export async function writeProject(serialized: string): Promise<StorageResult<boolean>> {
+export async function writeProject(serialized: string, key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
   try {
     const db = await openDatabase();
     try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).put(serialized, PROJECT_KEY);
+        tx.objectStore(STORE_NAME).put(serialized, key);
         tx.oncomplete = () => resolve();
         tx.onerror = () =>
           reject(tx.error ?? new Error("could not write the project"));
@@ -113,13 +115,13 @@ export async function writeProject(serialized: string): Promise<StorageResult<bo
   }
 }
 
-export async function clearProject(): Promise<StorageResult<boolean>> {
+export async function clearProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
   try {
     const db = await openDatabase();
     try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).delete(PROJECT_KEY);
+        tx.objectStore(STORE_NAME).delete(key);
         tx.oncomplete = () => resolve();
         tx.onerror = () =>
           reject(tx.error ?? new Error("could not clear the project"));

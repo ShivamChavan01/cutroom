@@ -83,14 +83,14 @@ try {
   await row.click();
   await page.getByText("Viewing · HEAD", { exact: true }).waitFor();
   await until(async () => Object.values((await import("/src/store.ts")).useEditorStore.getState().timeline.clips)[0].duration === 8000);
-  // Declining checkout with unsaved edits must retain both the edit and HEAD.
+  // Dirty checkout is blocked; undoing the edit explicitly makes checkout safe.
   await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().dispatch({ type: "renameProject", name: "Unsaved work" }));
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.locator(".commit-graph-row").filter({ hasText: "Import interview footage" }).click();
   assert.equal(await page.getByText("Viewing · HEAD", { exact: true }).count(), 1);
   const unchanged = await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().timeline.id);
   assert.equal(unchanged, "Unsaved work");
-  page.once("dialog", (dialog) => dialog.accept());
+  assert.match(await page.getByRole("alert").innerText(), /uncommitted changes/);
+  await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().undo());
   await page.locator(".commit-graph-row").filter({ hasText: "Import interview footage" }).click();
   await until(async () => (await import("/src/store.ts")).useEditorStore.getState().timeline.id === "Branch graph QA");
   await page.evaluate(async () => {

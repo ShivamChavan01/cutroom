@@ -110,7 +110,7 @@ export function StatusBar() {
           </span>
         )}
         <span title="Linter issues">
-          {issueCount} issue{issueCount === 1 ? "" : "s"}
+          {Object.keys(timeline.clips).length === 0 ? "nothing to verify" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
         </span>
         <span className={save.className} title={message ?? undefined}>
           {save.text}

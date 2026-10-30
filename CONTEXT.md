@@ -1,3 +1,28 @@
+## Current update: founder demo UX, 2026-10-30
+
+Local implementation at unchanged HEAD `7519d38`; starting checkout was clean.
+See [FOUNDER-DEMO-REPORT.md](FOUNDER-DEMO-REPORT.md) for the full current evidence.
+Optional `?demo=1` sample uses the actual reducer/history/VCS/merge/lint and
+self-created CC0 playable media. It opens a separate tab and uses distinct
+IndexedDB, OPFS, track-preference and layout namespaces. Personal data is
+preserved; reset asks for confirmation and affects only the sample workspace.
+A short optional guide exposes versions, graph, diff, a real overlap, resolution,
+a two-parent commit and a real gap finding. Empty verification is no longer
+presented as meaningful validation; assistant states and timeline-only export
+are explicit. The existing editor design and engine algorithms remain intact.
+
+Final checks: 718 tests / 77 files, both typechecks, production build and diff
+check passed. Full real Chrome workflow passed at 1440x900, 1366x768, 1280x800
+and 1024x768; narrow mobile shows a desktop limitation. Existing persistence,
+merge consistency, graph, editorial, waveform, detach-audio and assistant browser
+suites passed. Three local production-preview runs verified decoded video and
+persisted merge. AI error/access tests use HTTP fixtures, not live paid calls.
+Production configuration was read-only verified as River with reviewer access.
+No commits, pushes, PRs or deployment were made. Pending merge resolutions and
+same-workspace cross-tab synchronization remain unsupported; arbitrary older
+branch-only personal media restoration remains unproven. Historical sections
+below describe earlier snapshots and should not override this current report.
+
 # Cutroom — Context
 
 ## What this is

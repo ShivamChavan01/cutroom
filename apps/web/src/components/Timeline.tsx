@@ -359,9 +359,9 @@ export function Timeline() {
               <div
                 className="pointer-events-none absolute inset-x-0 top-8 z-10 px-3 text-center text-[13px] text-muted"
               >
-                <div className="mb-1.5">Drop footage here to begin.</div>
+                <div className="mb-1.5">Your sequence starts here.</div>
                 <div className="text-xs">
-                  Upload a video, then split, trim and arrange it on the timeline.
+                  Video and audio clips appear on these tracks.
                 </div>
               </div>
             )}

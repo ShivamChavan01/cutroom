@@ -48,8 +48,11 @@ describe("editor presentation", () => {
   it("offers an import action in an empty media library", () => {
     const html = renderToStaticMarkup(<SidePanel />);
     expect(html).toContain("Project media");
-    expect(html).toContain("Import your footage");
-    expect(html).toMatch(/<button[^>]*>.*?Import video<\/button>/);
+    expect(html).toContain("Try demo project");
+    expect(html).toContain('href="?demo=1"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain("Your project stays untouched");
+    expect(html).toMatch(/<button[^>]*>.*?Import your own footage<\/button>/);
     expect(html).toContain('type="file"');
   });
 

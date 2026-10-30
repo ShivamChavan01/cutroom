@@ -158,3 +158,17 @@ describe("media recovery", () => {
     expect(revoke.mock.calls.flat().sort()).toEqual(["blob:a0", "blob:a1", "blob:a2", "blob:a3", "blob:a4"]);
   });
 });
+
+it("restores bundled demo URLs without OPFS and still reports missing uploaded media", async () => {
+  clearAssetUrls();
+  vi.mocked(isOpfsAvailable).mockReturnValue(false);
+  const timeline = withAssets(2);
+  const bundled = new Map([["a0", "/demo/motion.mp4"], ["a1", "/demo/pulse.wav"]]);
+  expect(await restoreMedia(timeline, undefined, bundled)).toEqual({restored: 2, missing: 0, warning: null});
+  expect(resolveAssetUrl("a0")).toBe("/demo/motion.mp4");
+  expect(await restoreMedia(timeline, undefined, new Map([["a0", "/demo/motion.mp4"]]))).toMatchObject({restored: 1, missing: 1});
+  clearAssetUrls();
+  const controller = new AbortController(); controller.abort();
+  expect(await restoreMedia(timeline, controller.signal, bundled)).toEqual({restored: 0, missing: 0, warning: null});
+  expect(useAssetUrls.getState().size).toBe(0);
+});

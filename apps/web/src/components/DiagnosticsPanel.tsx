@@ -31,7 +31,7 @@ export function DiagnosticsPanel() {
         Linter — {diagnostics.length} issue{diagnostics.length === 1 ? "" : "s"}
         {errors > 0 ? ` (${errors} blocking)` : ""}
       </header>
-      {diagnostics.length === 0 ? (
+      {Object.keys(timeline.clips).length === 0 ? <div className="text-muted">No clips to verify. Build a sequence before checking its structure.</div> : diagnostics.length === 0 ? (
         <div style={{ color: "var(--color-success)" }}>Clean — no issues found.</div>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>

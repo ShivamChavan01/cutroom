@@ -28,3 +28,18 @@ describe("opfs helpers", () => {
     expect(formatBytes(3 * 1073741824)).toBe("3.00 GB");
   });
 });
+
+it("reads demo uploads from an isolated OPFS directory", async () => {
+  const { vi } = await import("vitest");
+  const { readMedia } = await import("./opfs");
+  const getDirectoryHandle = vi.fn().mockResolvedValue({getFileHandle: vi.fn().mockResolvedValue({getFile: vi.fn().mockResolvedValue(new Blob(["sample"]))})});
+  vi.stubGlobal("navigator", {storage: {getDirectory: async () => ({getDirectoryHandle})}});
+  vi.stubGlobal("location", {search: "?demo=1"});
+  try {
+    expect(await readMedia("test")).not.toBeNull();
+    expect(getDirectoryHandle).toHaveBeenCalledWith("media.demo-v1", {create: true});
+    vi.stubGlobal("location", {search: ""});
+    await readMedia("test");
+    expect(getDirectoryHandle).toHaveBeenLastCalledWith("media", {create: true});
+  } finally { vi.unstubAllGlobals(); }
+});

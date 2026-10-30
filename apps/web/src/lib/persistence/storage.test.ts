@@ -44,3 +44,15 @@ describe("IndexedDB storage layer", () => {
     expect(usage).toHaveProperty("quota");
   });
 });
+
+it("preserves the personal project when a demo is created, edited, and reset", async () => {
+  await writeProject("personal", "current");
+  await writeProject("demo", "current.demo-v1");
+  expect((await readProject("current")).value).toBe("personal");
+  expect((await readProject("current.demo-v1")).value).toBe("demo");
+  await writeProject("demo edited", "current.demo-v1");
+  await clearProject("current.demo-v1");
+  expect((await readProject("current.demo-v1")).value).toBeUndefined();
+  expect((await readProject("current")).value).toBe("personal");
+  await clearProject("current");
+});

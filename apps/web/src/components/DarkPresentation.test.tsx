@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { emptyTimeline } from "@cutroom/engine";
+import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
 import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -31,7 +31,8 @@ it("preserves numeric input limits, name and value", () => {
 });
 
 it("still explains a clean sequence in the verification panel", () => {
-  useEditorStore.getState().loadTimeline(emptyTimeline("dark-presentation"));
+  const base = putAsset(emptyTimeline("dark-presentation"), {id: "sample", kind: "video", duration: 1000});
+  useEditorStore.getState().loadTimeline({...base, clips: {shot: makeClip({id: "shot", assetId: "sample", trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1})}});
   const html = renderToStaticMarkup(<DiagnosticsPanel />);
   expect(html).toContain('aria-label="diagnostics"');
   expect(html).toContain("Clean — no issues found.");
@@ -45,5 +46,6 @@ it("exposes review tabs and the current verification panel", () => {
   expect(html).toContain('role="tabpanel"');
   expect(html).toContain(">Issues</button>");
   expect(html).toContain(">Activity</button>");
-  expect(html).toContain("Clean — no issues found.");
+  expect(html).toContain("No clips to verify");
+  expect(html).not.toContain("Clean — no issues found.");
 });

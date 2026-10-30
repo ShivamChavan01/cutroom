@@ -6,12 +6,83 @@ own hard problems with working code instead of claims:
 1. **Version Control** — "Code has git. Video has nothing."
 2. **Verification** — "There's no linter for video. We have to build one."
 
-[Try the hosted editor](https://cutroom-editor.vercel.app/).
-Import your own footage; project data and media stay in your browser.
-The hosted demo includes timeline editing, version control, verification and
-an AI assistant protected by a reviewer access code. Vercel builds the monorepo using `vercel.json` and deploys
-the connected `main` branch. The checked GitHub Pages deployment remains
-available as a [static mirror](https://shivamchavan01.github.io/cutroom/) without the AI endpoint.
+[Open the hosted editor](https://cutroom-editor.vercel.app/).
+Cutroom explores branching, conflict-aware merging, and structural verification
+for video timelines. AI explanations propose edits for review; they never apply
+changes on their own. This is a prototype, including timeline interchange export,
+not rendered MP4 export.
+
+## Try the sample project
+
+This revision adds **Try demo project** inside the editor. Run it locally with
+`pnpm dev`; the hosted editor needs a deployment of this revision before the
+sample button is available. No upload or AI access code is needed for the sample.
+
+1. Choose **Try demo project**. A separate sample tab opens with an eight-second
+   original motion study, three video clips, and an audio bed. Press Play.
+2. Choose **See two versions**. Switch between `main` and `alternate`, or open
+   **Graph** to see their shared ancestor and independent commits.
+3. Choose **Compare edits**. The real timeline diff shows moves and a trim.
+4. Choose **Merge versions**. Main moves `middle` to 3–5 seconds; alternate moves
+   `ending` to 4–6 seconds. Each version has no overlaps, but their combination
+   creates a genuine 4–5 second collision on V1.
+5. Choose **Keep middle** or **Keep ending**. This explicitly removes the other
+   clip; neither clip shifts automatically. Enter a message and **Commit merge**.
+   The commit records both parents. Unresolved conflicts block the commit.
+6. Choose **Inspect findings**. The actual linter reports a gap. Click the finding
+   to locate it. Gaps may be intentional: verification asks for review, not an
+   automatic creative decision. **Assistant** can explain findings if reviewer
+   access is available.
+
+The guide is optional and skippable. **Reset sample** asks for confirmation and
+restores only the sample. If you change the scenario, use Versions to explore your
+edits or reset before repeating the guide.
+
+### Data isolation and refresh
+
+- Your existing project remains in its original tab. The sample uses the
+  `?demo=1` workspace, IndexedDB key `current.demo-v1`, and OPFS directory
+  `media.demo-v1`; personal storage remains `current` and `media`.
+- Track preferences and resized panel layouts are also separated. Loading,
+  editing, or resetting the sample never clears personal IndexedDB or media.
+  The **Personal workspace** link opens a personal tab; your original tab remains
+  available with its working edits.
+- Sample commits, edits, undo history, and uploaded media restore after refresh.
+  Wait for **saved** before refreshing. Pending merge resolutions are **not**
+  persisted: refresh cancels an uncommitted merge, as the guide warns.
+- Bundled media is served from this app and restored without OPFS. New uploads
+  use the active workspace's OPFS directory. Resetting the sample resets project
+  state, retaining uploaded sample files in that isolated directory. Browser
+  storage is local to this origin/device, subject to browser quota and eviction.
+  Media referenced only by older commits or other personal branches may still
+  need reimporting; that broader restoration path is not proven here.
+  Use one tab per workspace; concurrent writes to the same workspace do not have
+  synchronization or cross-tab conflict protection.
+- Media is self-created procedural graphics and synthesized sound, under CC0.
+  See [provenance and regeneration instructions](apps/web/public/demo/README.md).
+  The two sources total under 400 KB and are requested only in the sample.
+
+### Assistant and export availability
+
+The hosted assistant uses the provider reported by `/api/assistant/config`
+(current deployment: River). Request a reviewer access code from the project
+owner. Credentials stay on the server; the access code stays in panel memory
+until reload/unmount. The sample works without AI. Loading, unavailable,
+access-required, request, provider-error and proposal-review states are explicit.
+No prerecorded response is presented as a live model result. The assistant sees
+structured timeline information and findings, not footage or audio.
+
+**Export timeline** downloads OTIO, FCPXML, EDL or native JSON. It does not render
+an MP4, package source media, or export the complete commit graph.
+
+Desktop editing is checked at 1440×900, 1366×768, 1280×800 and 1024×768. Panels
+remain resizable; larger monitors give the preview and inspector more room.
+Narrow screens show a desktop notice: full mobile editing is not supported.
+Structural checks do not prove visual/audio quality or frame-accurate playback.
+See [the implementation and QA report](FOUNDER-DEMO-REPORT.md) for evidence and
+remaining limitations. Vercel builds the monorepo using `vercel.json` on `main`;
+the [GitHub Pages static mirror](https://shivamchavan01.github.io/cutroom/) has no
+AI endpoint.
 
 ## What works
 

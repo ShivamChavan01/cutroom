@@ -51,8 +51,8 @@ export function Preview() {
         {empty && (
           <div className="studio-viewer-empty">
             <Clapperboard size={34} aria-hidden />
-            <h3>Ready for your first cut.</h3>
-            <p>Import footage to preview it here.<br />Drop video files onto the timeline or choose Add video.</p>
+            <h3>Your sequence plays here.</h3>
+            <p>Cuts, gaps, and audio follow the timeline below.</p>
           </div>
         )}
       </div>
