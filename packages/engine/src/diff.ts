@@ -57,6 +57,12 @@ function equalClipField(a: Clip, b: Clip, field: (typeof EDITABLE_FIELDS)[number
   return a[field] === b[field];
 }
 
+/** Semantic clip equality, including implicit transform defaults and excluding derived outPoint. */
+export function sameClip(a: Clip | undefined, b: Clip | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a === b || (a.id === b.id && samePosition(a, b) && EDITABLE_FIELDS.every(field => equalClipField(a, b, field)));
+}
+
 function sameAsset(a: Asset | undefined, b: Asset | undefined): boolean {
   if (a === undefined || b === undefined) return a === b;
   const fields = ["id", "kind", "duration", "width", "height", "bytes", "proxyId", "name", "mimeType"] as const;

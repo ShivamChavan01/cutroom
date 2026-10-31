@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { authorsByClip, lint, detachedAudioId } from "@cutroom/engine";
+import { lint, detachedAudioId } from "@cutroom/engine";
+import {clipAuthors} from "../lib/clipAuthors";
 import { planAudioDetach } from "../lib/detachAudio";
 import { indexedTimelineDuration } from "../lib/clipIndex";
 import { diffToVisuals, type ClipVisual } from "../lib/diffView";
@@ -52,6 +53,7 @@ function conflictKeyAtTarget(target: EventTarget | null): string | null {
  */
 export function Timeline() {
   const history = useEditorStore((state) => state.history);
+  const repo = useVcsStore(state => state.repo);
   const timeline = useEditorStore((state) => state.timeline);
   const trackIds = useTrackIds();
   const playheadMs = usePlayhead();
@@ -87,9 +89,8 @@ export function Timeline() {
     return map;
   }, [timeline]);
 
-  // Blame, derived from the log like everything else — recomputed only
-  // when history moves, so playhead ticks never re-derive it.
-  const authors = useMemo(() => authorsByClip(history, timeline), [history, timeline]);
+  // Committed provenance survives checkout; playhead ticks do not re-derive it.
+  const authors = useMemo(() => clipAuthors(repo, history, timeline), [repo, history, timeline]);
 
   // Diff overlay: computed once per overlay object, fanned out per clip
   // and per track for ghosts. Null when no comparison is active.

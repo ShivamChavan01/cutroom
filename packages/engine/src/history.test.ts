@@ -75,6 +75,14 @@ describe("history", () => {
     }
   });
 
+  it("attributes working edits to the latest applied clip operation through Undo/Redo", () => {
+    let h = record(createHistory(baseTimeline()), {type: "moveClip", clipId: "c1", start: 1000}, "alice");
+    h = record(h, {type: "setVolume", clipId: "c1", volume: .5}, "bob");
+    expect(authorsByClip(h).get("c1")).toBe("bob");
+    expect(authorsByClip(undo(h)).get("c1")).toBe("alice");
+    expect(authorsByClip(redo(undo(h))).get("c1")).toBe("bob");
+  });
+
   it("drops blame for a deleted clip", () => {
     let h = createHistory(baseTimeline());
     h = record(h, { type: "deleteClip", clipId: "c1" }, "alice");

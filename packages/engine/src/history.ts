@@ -65,7 +65,7 @@ export function redo(history: History): History {
 }
 
 /**
- * Authorship per clip, derived from the log rather than stored on the clip.
+ * Latest active clip-operation authorship, derived from the log rather than stored on clips.
  *
  * Deriving it means blame is always consistent with what was actually applied:
  * there is no second bookkeeping path that can fall out of date.
@@ -97,9 +97,7 @@ export function authorsByClip(history: History, timeline: Timeline = current(his
       case "setAssetTags":
         break;
       default:
-        if (authors.has(op.clipId) === false) {
-          authors.set(op.clipId, author);
-        }
+        authors.set(op.clipId, author);
         break;
     }
   }

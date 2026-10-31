@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { emptyTimeline, makeClip, putAsset, record, splitChildId } from "@cutroom/engine";
 import { useEditorStore } from "../store";
 import { Inspector } from "./Inspector";
+import {useVcsStore} from "../vcsStore";
+import {installDemoProject} from "../lib/demo/load";
+import {deserializeProject, serializeProject} from "../lib/persistence/project";
 
 vi.mock("../store", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../store")>();
@@ -11,10 +14,18 @@ vi.mock("../store", async (importOriginal) => {
     useEditorStore: Object.assign(
       <T,>(selector: (state: ReturnType<typeof actual.useEditorStore.getState>) => T) =>
         selector(actual.useEditorStore.getState()),
-      { getState: actual.useEditorStore.getState },
+      { getState: actual.useEditorStore.getState, setState: actual.useEditorStore.setState },
     ),
     useSelection: () => actual.useEditorStore.getState().selectedClipId,
   };
+});
+
+vi.mock("../vcsStore", async original => {
+  const actual = await original<typeof import("../vcsStore")>();
+  return {...actual, useVcsStore: Object.assign(
+    <T,>(selector: (state: ReturnType<typeof actual.useVcsStore.getState>) => T) => selector(actual.useVcsStore.getState()),
+    {getState: actual.useVcsStore.getState, setState: actual.useVcsStore.setState},
+  )};
 });
 
 function seedClip() {
@@ -34,6 +45,7 @@ function seedClip() {
 describe("clip inspector", () => {
   beforeEach(() => {
     useEditorStore.getState().loadTimeline(emptyTimeline("inspector-test"));
+    useVcsStore.setState({repo: null, pending: null, diffOverlay: null});
   });
 
   it("shows a compact selection prompt without unavailable actions", () => {
@@ -111,5 +123,20 @@ describe("clip inspector", () => {
     const html = renderToStaticMarkup(<Inspector />);
     expect(html).toContain('aria-label="Clip issues"');
     expect(html).toContain("overlap");
+  });
+
+  it("keeps committed clip attribution after checkout, fast-forward and restoration", () => {
+    installDemoProject();
+    const editor = useEditorStore.getState(), vcs = useVcsStore.getState();
+    useEditorStore.setState({authorId: "Main editor"});
+    editor.dispatch({type: "moveClip", clipId: "opening", start: 400}); vcs.commitCurrent("Main edit");
+    vcs.createBranch("feature"); vcs.checkoutBranch("feature");
+    useEditorStore.setState({authorId: "Feature editor"});
+    editor.dispatch({type: "moveClip", clipId: "opening", start: 600}); vcs.commitCurrent("Feature edit");
+    vcs.checkoutBranch("main"); vcs.beginMerge("feature"); editor.selectClip("opening");
+    expect(renderToStaticMarkup(<Inspector />)).toContain("Feature editor");
+    const restored = deserializeProject(serializeProject({repo: useVcsStore.getState().repo!, history: useEditorStore.getState().history}));
+    editor.restoreHistory(restored.history); vcs.restoreRepo(restored.repo); editor.selectClip("opening");
+    expect(renderToStaticMarkup(<Inspector />)).toContain("Feature editor");
   });
 });

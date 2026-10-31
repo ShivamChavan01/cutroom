@@ -65,6 +65,11 @@ edits or reset before repeating the guide.
   same content adds another clip without overwriting its existing name or tags.
   New saves use internal project schema 2; this build reads schema 1 and 2.
   Older builds cannot read schema 2. Timeline export formats are unchanged.
+- Clip authors in the inspector and timeline survive checkout and reload.
+  They trace the latest clip-changing commit; working differences use the latest
+  active clip operation. An unchanged merge-parent clip keeps its attribution;
+  a newly combined clip credits the merge author. Identical parent snapshots
+  prefer the first parent. This is snapshot provenance, not field-level Git blame.
 - Deleting a timeline clip retains its source file for Undo, the media library
   and saved versions. Clip deletion does not reclaim disk space. Automatic
   unused-file collection is deferred rather than risking recoverable footage.

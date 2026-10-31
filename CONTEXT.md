@@ -1,4 +1,20 @@
-## Current update: reliability fixes for issues 6–9, 2026-10-30
+## Current update: committed clip attribution and issue review, 2026-10-31
+
+Started from clean `31661cb`. Issue #10 reproduced in inspector/working-author
+regressions. Clip attribution now combines committed snapshot ancestry with
+latest active working operations. Checkout, fast-forward and detached inspection
+use the viewed commit; unchanged parent clips keep their earlier authors and
+new merge combinations credit the merge author. No persisted provenance field or
+schema change is introduced. Inspector and timeline share the derivation.
+
+Local checks: 2,839 passing cases / 93 files, TypeScript and build passed. Eight
+real Chrome authorship journeys and the existing four-size readiness/recovery
+suite pass. Fresh isolated production checks for #1–#9 passed and each issue was
+closed with an individual root-cause/fix/evidence review. #10 shipping and live
+verification are recorded in its GitHub resolution review. See
+[ISSUE-REVIEW-REPORT.md](ISSUE-REVIEW-REPORT.md) for semantics and test evidence.
+
+## Historical update: reliability fixes for issues 6–9, 2026-10-30
 
 Local work from `254fb52`; no commit, push or deployment. The untracked
 adversarial report and its QA fixtures remain available as historical evidence.
