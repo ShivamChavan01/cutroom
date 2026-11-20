@@ -11,6 +11,14 @@ runs without uploads or AI access. AI explanations suggest edits for review;
 applying them is an explicit action. Export produces timeline interchange files,
 not a rendered MP4.
 
+## Working with 4K and 8K footage
+
+Cutroom previews the original file by default. If jumping around a 4K clip feels slow, open **Media → File details → Prepare editing copy…** in desktop Chrome and choose a new file name. Cutroom saves a full-resolution H.264 MP4 with frequent keyframes and uses it for this session. **Use original** switches back. Timeline exports still reference the imported asset. The control requires a browser video encoder and a local save picker, and supports one opaque SDR video track.
+
+On a Radeon Vega 8 laptop, six clicks on a 12-second upscaled 4K clip took a median of 1.74 seconds to show the selected frame. With the editing copy, the median was 0.36 seconds. Preparing it took 58 seconds and used about 30 MiB of additional disk space.
+
+During single-video playback, the timeline now follows the video clock when decoding slows. In three short 8K trials on the same laptop, Cutroom issued zero catch-up seeks or automatic pauses. Chrome used software decoding and played 4.44 seconds in 9.03 seconds of wall time. With multiple active tracks, Cutroom pauses them together while one buffers. The 240-clip test verified audio sync within 250 ms across cuts. [Benchmark setup and results](PERF.md#source-resolution-playback-and-editing-copies)
+
 ## Try the sample project
 
 Choose **Try the sample project** in the empty preview of the hosted editor, or run
@@ -209,8 +217,8 @@ AI endpoint.
   start time and volume. Add video tracks, drag clips, hide/mute/lock tracks,
   zoom or fit the timeline, and use preview zoom/fullscreen. Clip, Sequence
   and Project tabs in Properties include project naming and frame-rate settings.
-  Properties and Assistant open in a collapsible sidebar. Issues appear beside
-  the timeline. Resizable panels, an Activity drawer, command palette,
+  Media, Versions, Issues, Properties and Settings open from the left rail.
+  Assistant opens in a full-height, resizable panel on the right. Resizable panels, an Activity drawer, command palette,
   undo/redo, blame and activity sit alongside commits, branches, a visual
   commit graph, diffs and merge conflict resolution. The version rail can
   fork a version while preserving current edits. The graph marks shared tips,
@@ -300,13 +308,7 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-2,977 cases pass across 106 files in the combined engine, web, adversarial
-and measurement-script checks. The current run used two batches; CLI startup
-timeouts under host load passed on rerun without assertion changes. Both TypeScript checks and the production build pass. Current local browser
-evidence covers the agent workspace, production context workflow and gain baseline; model
-responses in those checks are controlled fixtures. These are local checks, not
-verification of the current hosted deployment. See [performance measurements](PERF.md)
-and [demo limitations](DEMO-LIMITATIONS.md) for measurement scope and limitations.
+The November 21 release passed 746 web tests and 220 engine and measurement-script tests. GitHub CI passed typechecking, tests and the production build. The Vercel smoke check verified the public editor, its JavaScript bundle, sample video and Assistant configuration endpoint. Model responses in local workflow tests use controlled fixtures. [Release workflow](https://github.com/ShivamChavan01/cutroom/actions/runs/44811133890) · [Project progress](PROGRESS.md) · [Demo limitations](DEMO-LIMITATIONS.md)
 
 Tabs use the shadcn composition with Radix primitives for keyboard navigation,
 focus and linked panels. The dark palette has text-contrast regressions;
@@ -358,11 +360,10 @@ your work quietly.
 ## AI verification assistant
 
 Open **Assistant** at the top right or choose **Issues → Explain issues with AI**.
-The conversation fills the left sidebar beside the preview and timeline. Enter sends
+The conversation opens to the right of the preview and timeline. Enter sends
 and Shift+Enter inserts a line break. **Brief & references** opens the brief,
 reference directions, requirements and source evidence. Its Save action stays
-visible while the form scrolls. Switch to **Properties** or close the sidebar
-to widen the preview. Reopening Assistant restores your question and drafts.
+visible while the form scrolls. Choose **Close Assistant** to widen the preview. Reopening Assistant restores your question and drafts.
 
 Conversation stays in memory during this page session. Requests include at
 most 12 recent messages within 12,000 characters, alongside current project
