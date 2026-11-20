@@ -1,4 +1,4 @@
-import { demoHref, isDemoWorkspace } from "../lib/workspace";
+import { VersionRail } from "./VersionRail";
 import { useEffect, useState } from "react";
 import { type Asset } from "@cutroom/engine";
 import { useAssetUrls } from "../lib/assets";
@@ -7,7 +7,6 @@ import { clipForMedia, filterMediaAssets, mediaLabel, mediaTags, parseMediaTags 
 import { VersionControl } from "./VersionControl";
 import { CommitGraph } from "./CommitGraph";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
-import { AssistantPanel } from "./AssistantPanel";
 import { formatBytes, mediaUsage as readMediaUsage } from "../lib/media/opfs";
 import { useEditorStore } from "../store";
 import { formatTime } from "../theme";
@@ -15,6 +14,7 @@ import { useUiStore } from "../uiStore";
 import { Button } from "./ui/button";
 import { Film, Grid2X2, History, Image as ImageIcon, GitBranch, List, Music, Search, Tag, Upload, X } from "lucide-react";
 import { UploadButton } from "./UploadButton";
+import { EditingCopyControl } from "./EditingCopyControl";
 import { MediaPoster } from "./MediaPoster";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 function LibraryPoster({ asset }: { asset: Asset }) {
@@ -152,9 +152,8 @@ function MediaPanel() {
           {visible.length === 0 ? (
             <div className="media-empty">
               {section === "graphics" ? <ImageIcon aria-hidden className="size-8" /> : <Film aria-hidden className="size-8" />}
-              <h3>{section === "footage" && entries.length === 0 ? "See how edits come together" : query !== "" || tag !== "" ? "No matching media" : section === "graphics" ? "Import your graphics" : "Import your footage"}</h3>
-              <p>{section === "footage" && entries.length === 0 ? "Explore branching, a real timing conflict, and verification in a playable sample." : query !== "" || tag !== "" ? "Try another search or clear the selected tag." : "Add media to start editing. You can also drop files on the timeline."}</p>
-              {section === "footage" && entries.length === 0 && !isDemoWorkspace() && <><a className="demo-start" href={demoHref()} target="_blank" rel="noopener noreferrer">Try demo project <span>Recommended · opens a separate tab ↗</span></a><small className="demo-safety">Your project stays untouched.</small></>}
+              <h3>{query !== "" || tag !== "" ? "No matching media" : section === "graphics" ? "Import your graphics" : "Import your footage"}</h3>
+              <p>{query !== "" || tag !== "" ? "Try another search or clear the selected tag." : "Add media to start editing. You can also drop files on the timeline."}</p>
               <UploadButton icon={<Upload />} label={section === "graphics" ? "Import graphics" : "Import your own footage"} accept={section === "graphics" ? "image/*" : "video/*,audio/*"} />
             </div>
           ) : (
@@ -167,10 +166,14 @@ function MediaPanel() {
                       <div className="media-poster"><LibraryPoster asset={asset} /><span className="media-duration">{formatTime(asset.duration)}</span></div>
                       <div className="media-item-details">
                         <div className="media-item-title" title={label}>{label}</div>
-                        <div className="media-item-id" title={asset.id}>{asset.id.slice(0, 16)}</div>
-                        <div className="media-item-meta">{asset.width !== undefined && asset.height !== undefined ? `${asset.width} × ${asset.height} · ` : ""}{asset.bytes === undefined ? formatTime(asset.duration) : formatBytes(asset.bytes)}</div>
                       </div>
                     </button>
+                    {selectedAsset === asset.id && <Button size="sm" className="media-add" onClick={() => addMedia(asset)}>Add to timeline</Button>}
+                    <details className="media-details"><summary>File details</summary>
+                      <p>{asset.width !== undefined && asset.height !== undefined && `${asset.width} × ${asset.height} · `}{asset.bytes === undefined ? asset.kind : formatBytes(asset.bytes)}</p>
+                      <code>{asset.id}</code>
+                      {asset.kind === "video" && <EditingCopyControl asset={asset} />}
+                    </details>
                     <button className="media-tag-button" aria-label={`Tag ${label}`} title="Edit media tags. Undo and Redo include tag changes." onClick={() => editTags(asset)}><Tag size={11} aria-hidden />{asset.tags?.join(", ") || "Add tag"}</button>
                   </li>
                 );
@@ -187,12 +190,12 @@ function MediaPanel() {
 function VersionsPanel() {
   return (
     <Tabs defaultValue="history" className="versions-panel">
-      <div className="panel-heading"><h2>Versions</h2></div>
+      <VersionRail />
       <TabsList aria-label="Version views" className="mb-3">
         <TabsTrigger value="history">History</TabsTrigger>
         <TabsTrigger value="graph">Graph</TabsTrigger>
       </TabsList>
-      <TabsContent value="history"><p className="panel-context">Save editing decisions, compare versions, then combine them with conflicts for you to resolve.</p><VersionControl /></TabsContent>
+      <TabsContent value="history"><VersionControl /></TabsContent>
       <TabsContent value="graph"><CommitGraph /></TabsContent>
     </Tabs>
   );
@@ -204,25 +207,16 @@ function VersionsPanel() {
  */
 export function SidePanel() {
   const rail = useUiStore((state) => state.rail);
-  const setBottomTab = useUiStore((state) => state.setBottomTab);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {rail === "media" && <MediaPanel />}
       {rail === "versions" && <VersionsPanel />}
-      {rail === "assistant" && <AssistantPanel />}
       {rail === "issues" && (
         <>
           <DiagnosticsPanel />
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button size="sm" variant="outline" onClick={() => useUiStore.getState().setRail("assistant")}>Explain issues with AI</Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setBottomTab("issues")}
-            >
-              Open issues panel
-            </Button>
+            <Button size="sm" variant="outline" onClick={() => useUiStore.getState().setPropertiesTab("assistant")}>Explain issues with AI</Button>
           </div>
         </>
       )}

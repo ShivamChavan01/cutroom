@@ -16,7 +16,7 @@ async function saved() {await page.locator('[data-save-status="saved"]').waitFor
 async function stored() {
   await saved();
   return page.evaluate(async () => {
-    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom", 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
+    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
     try {return await new Promise((resolve, reject) => {const r = db.transaction("projects").objectStore("projects").get("current.demo-v1"); r.onsuccess = () => resolve(JSON.parse(r.result)); r.onerror = () => reject(r.error);});}
     finally {db.close();}
   });
@@ -25,18 +25,19 @@ async function decoded() {await page.waitForFunction(() => [...document.querySel
 async function versions() {await page.getByRole("button", {name: "Versions", exact: true}).click();}
 async function merge(source) {
   await versions();
+  if (!await page.getByRole("combobox", {name: "Merge source", exact: true}).isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
   await page.getByRole("combobox", {name: "Merge source", exact: true}).selectOption(source);
   await page.getByRole("button", {name: "Merge", exact: true}).click();
 }
 async function commit(message) {
   await versions();
-  await page.getByRole("textbox", {name: "Commit message", exact: true}).fill(message);
-  await page.getByRole("button", {name: "Commit", exact: true}).click();
+  await page.getByRole("textbox", {name: "What changed?", exact: true}).fill(message);
+  await page.getByRole("button", {name: "Save version", exact: true}).click();
   await saved();
 }
 async function checkout(name) {
   await versions();
-  await page.getByRole("combobox", {name: "Current branch", exact: true}).selectOption(name);
+  await page.getByRole("combobox", {name: "Current cut", exact: true}).selectOption(name);
   await saved();
 }
 async function shortcut(key) {
@@ -119,8 +120,10 @@ try {
   assert.deepEqual((await stored()).repo, merged.repo);
   results.push("#4 repeated merge is a no-op, including after reload; genuine divergent merge still commits two parents");
 
-  await page.getByRole("textbox", {name: "New branch name", exact: true}).fill("ahead");
-  await page.getByRole("button", {name: "Branch", exact: true}).click(); await checkout("ahead");
+  await page.getByText("Create another cut", {exact: true}).click();
+  await page.getByLabel("Switch to this cut").uncheck();
+  await page.getByLabel("Cut name", {exact: true}).fill("ahead");
+  await page.getByRole("button", {name: "Create cut", exact: true}).click(); await checkout("ahead");
   await page.locator('header input[type="file"]').first().setInputFiles(path.resolve(process.env.QA_VIDEO ?? ".gstack/adversarial-qa/media/long.mp4"));
   await page.getByRole("button", {name: "Media", exact: true}).click();
   await page.getByRole("button", {name: "Tag long.mp4", exact: true}).waitFor();

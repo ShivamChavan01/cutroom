@@ -1,3 +1,4 @@
+import { openProjectMenu, openProjectTool, openSampleGuide } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import {mkdir, writeFile} from "node:fs/promises";
 import path from "node:path";
@@ -27,28 +28,28 @@ async function decoded(page) {
 async function shot(page, name) {await page.screenshot({path: path.join(out, name + ".png")});}
 async function stored(page, key = "current.demo-v1") {
   return page.evaluate(async key => {
-    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom", 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
+    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
     try {return await new Promise((resolve, reject) => {const r = db.transaction("projects", "readonly").objectStore("projects").get(key); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});}
     finally {db.close();}
   }, key);
 }
 async function seed(page, raw, key = "current.demo-v1") {
   await page.evaluate(async ({raw, key}) => {
-    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom", 1); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
+    const db = await new Promise((resolve, reject) => {const r = indexedDB.open("cutroom"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);});
     try {await new Promise((resolve, reject) => {const tx = db.transaction("projects", "readwrite"); tx.objectStore("projects").put(raw, key); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);});}
     finally {db.close();}
   }, {raw, key});
 }
 async function startMerge(page) {
-  await page.getByRole("button", {name: "See two versions", exact: true}).focus();
+  await openSampleGuide(page); await page.getByRole("button", {name: "See two versions", exact: true}).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("button", {name: "Compare edits", exact: true}).click();
-  await page.getByRole("button", {name: "Merge versions", exact: true}).click();
+  await openSampleGuide(page); await page.getByRole("button", {name: "Compare edits", exact: true}).click();
+  await openSampleGuide(page); await page.getByRole("button", {name: "Merge versions", exact: true}).click();
   await page.getByRole("button", {name: "Keep middle", exact: true}).waitFor();
 }
 async function reset(page) {
   page.once("dialog", d => d.accept());
-  await page.getByRole("button", {name: "Reset sample", exact: true}).click();
+  await openSampleGuide(page); await page.getByRole("button", {name: "Reset sample", exact: true}).click();
   await page.getByRole("button", {name: "See two versions", exact: true}).waitFor();
   await decoded(page);
 }
@@ -70,20 +71,20 @@ try {
     await page.getByRole("button", {name: "Fit timeline", exact: true}).click();
     await shot(page, `intro-${width}`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
-    await page.getByRole("button", {name: "See two versions", exact: true}).click();
-    await page.getByRole("combobox", {name: "Current branch", exact: true}).selectOption("alternate");
+    await openSampleGuide(page); await page.getByRole("button", {name: "See two versions", exact: true}).click();
+    await page.getByRole("combobox", {name: "Current cut", exact: true}).selectOption("alternate");
     assert.match(await page.locator(".demo-guide").innerText(), /viewing another cut/);
     await saved(page);
     assert.equal(JSON.parse(await stored(page)).history.base.clips.ending.start, 4000);
-    await page.getByRole("combobox", {name: "Current branch", exact: true}).selectOption("main");
+    await page.getByRole("combobox", {name: "Current cut", exact: true}).selectOption("main");
     await page.getByRole("tab", {name: "Graph", exact: true}).click();
     await page.locator('[aria-label="Commit graph"]').waitFor();
     await shot(page, `graph-${width}`);
     await page.getByRole("tab", {name: "History", exact: true}).click();
-    await page.getByRole("button", {name: "Compare edits", exact: true}).click();
+    await openSampleGuide(page); await page.getByRole("button", {name: "Compare edits", exact: true}).click();
     await page.getByRole("tab", {name: "Diff", exact: true}).waitFor();
     await shot(page, `compare-${width}`);
-    await page.getByRole("button", {name: "Merge versions", exact: true}).click();
+    await openSampleGuide(page); await page.getByRole("button", {name: "Merge versions", exact: true}).click();
     await saved(page);
     const pending = JSON.parse(await stored(page));
     assert.equal(pending.pending.sourceBranch, "alternate");
@@ -114,17 +115,17 @@ try {
     assert.equal(committed.history.base.clips.ending, undefined);
     assert.equal(committed.history.base.clips.middle.start, 3000);
     assert.equal(committed.pending, null);
-    await page.getByRole("button", {name: "Inspect findings", exact: true}).click();
-    const finding = page.locator('[aria-label="diagnostics"]').first().getByRole("button").filter({hasText: "gap of 1200ms"});
-    assert.match(await finding.innerText(), /1.80s to 3.00s on video track V1/);
-    assert.match(await finding.innerText(), /Keep the pause if deliberate/);
-    await finding.click();
+    await openSampleGuide(page); await page.getByRole("button", {name: "Inspect findings", exact: true}).click();
+    const finding = page.locator('[aria-label="diagnostics"]').first().locator(".issue-item").filter({hasText: "1.2-second gap on V1"});
+    assert.match(await finding.innerText(), /1.80s to 3.00s/);
+    assert.match(await finding.innerText(), /decide whether to keep it/);
+    await finding.getByRole("button", {name: /Show on timeline/}).click();
     assert.match(await page.getByLabel("timecode", {exact: true}).innerText(), /00:00:01:24/);
     await shot(page, `verification-${width}`);
     await page.reload(); await decoded(page);
     assert.deepEqual(JSON.parse(await stored(page)).repo, committed.repo);
-    await page.getByRole("button", {name: "Skip guide", exact: true}).click();
-    await page.getByRole("button", {name: "Show walkthrough", exact: true}).click();
+    await openSampleGuide(page); await page.getByRole("button", {name: "Close guide", exact: true}).click();
+    await openSampleGuide(page);
     assert.match(await page.locator(".demo-guide").innerText(), /Review the combined cut/);
     // The normal timeline-only export remains explicit.
     await page.locator("header").getByRole("button", {name: "Export timeline", exact: true}).click();
@@ -148,10 +149,10 @@ try {
   await personal.locator('header input[type="file"]').first().setInputFiles(path.resolve("apps/web/public/demo/motion.mp4"));
   await personal.getByRole("tab", {name: "Project", exact: true}).click();
   await personal.getByRole("textbox", {name: "Project name", exact: true}).fill("Personal QA cut");
-  await personal.getByRole("button", {name: "Save name", exact: true}).click(); await saved(personal);
+  await personal.getByLabel("Project name", {exact: true}).press("Enter"); await saved(personal);
   const original = await stored(personal, "current");
   const popup = isolated.waitForEvent("page");
-  await personal.getByRole("link", {name: "Try demo project ↗", exact: true}).click();
+  await openProjectMenu(personal); await personal.getByRole("link", {name: "Try demo project ↗", exact: true}).click();
   const demo = await popup; activePage = demo; await decoded(demo);
   await startMerge(demo); await saved(demo); await reset(demo); await saved(demo);
   assert.equal(await stored(demo, "current"), original);
@@ -169,15 +170,16 @@ try {
   const rename = async name => {
     await partial.getByRole("tab", {name: "Project", exact: true}).click();
     await partial.getByRole("textbox", {name: "Project name", exact: true}).fill(name);
-    await partial.getByRole("button", {name: "Save name", exact: true}).click();
-    await partial.getByRole("button", {name: "Versions", exact: true}).click();
-    await partial.getByLabel("Commit message", {exact: true}).fill(name);
-    await partial.getByRole("button", {name: "Commit", exact: true}).click();
+    await partial.getByLabel("Project name", {exact: true}).press("Enter");
+    await openProjectTool(partial, "Versions");
+    await partial.getByLabel("What changed?", {exact: true}).fill(name);
+    await partial.getByRole("button", {name: "Save version", exact: true}).click();
   };
   await rename("Our title");
-  await partial.getByLabel("Current branch", {exact: true}).selectOption("alternate");
+  await partial.getByLabel("Current cut", {exact: true}).selectOption("alternate");
   await rename("Their title");
-  await partial.getByLabel("Current branch", {exact: true}).selectOption("main");
+  await partial.getByLabel("Current cut", {exact: true}).selectOption("main");
+  if (!await partial.getByLabel("Merge source", {exact: true}).isVisible()) await partial.getByText("Combine cuts", {exact: true}).click();
   await partial.getByLabel("Merge source", {exact: true}).selectOption("alternate");
   await partial.getByRole("button", {name: "Merge", exact: true}).click();
   await partial.getByRole("button", {name: "Keep ours", exact: true}).click(); await saved(partial);
@@ -230,7 +232,7 @@ try {
       await page.route("**/demo/motion.mp4", route => route.fulfill({status: failure === "missing" ? 404 : 200, contentType: "video/mp4", body: "unreadable-video"}));
       await page.route("**/demo/pulse.wav", async route => {await new Promise(resolve => setTimeout(resolve, 1000)); await route.continue();});
     }
-    await page.goto(new URL("?demo=1", target).href); await page.locator(".demo-guide").waitFor();
+    await page.goto(new URL("?demo=1", target).href); await page.locator(".demo-guide").waitFor({state: "attached"});
     if (failure === "storage") {
       await decoded(page); assert.match(await page.locator("footer").innerText(), /storage unavailable/);
     } else {
@@ -258,7 +260,7 @@ try {
   await request.click(); await ai.getByRole("alert").filter({hasText: "valid assistant access code"}).waitFor();
   status = 429; await request.click(); await ai.getByRole("alert").filter({hasText: "rate or quota"}).waitFor();
   providerAvailable = false;
-  await ai.getByRole("button", {name: "Media", exact: true}).click();
+  await ai.reload();
   await ai.getByRole("button", {name: "Assistant", exact: true}).click();
   await ai.getByText(/Assistant unavailable: server configuration/).waitFor();
   assert.equal(await request.isDisabled(), true);

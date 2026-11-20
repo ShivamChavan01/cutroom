@@ -21,6 +21,7 @@ function DiffCompare({
   timeline,
   diffBase,
   diffTarget,
+  workingCommit,
   onBase,
   onTarget,
 }: {
@@ -28,6 +29,7 @@ function DiffCompare({
   timeline: Timeline;
   diffBase: string;
   diffTarget: string;
+  workingCommit: string | null;
   onBase: (value: string) => void;
   onTarget: (value: string) => void;
 }) {
@@ -36,7 +38,11 @@ function DiffCompare({
   const diffOverlay = useVcsStore((state) => state.diffOverlay);
   const { options, resolve } = diffTargets(repo);
 
+  const snapshotId = (value: string) => value === "working" ? workingCommit
+    : value.startsWith("branch:") ? repo.branches[value.slice(7)] : value.slice(7);
+  const sameVersion = diffBase === diffTarget || snapshotId(diffBase) === snapshotId(diffTarget);
   const compare = () => {
+    if (sameVersion) return;
     const base =
       diffBase === "working"
         ? { timeline, label: "working copy" }
@@ -52,7 +58,6 @@ function DiffCompare({
 
   return (
     <div className="vcs-section vcs-compare">
-      <h3 className="vcs-label">Compare versions</h3>
       <label className="vcs-field">
         <span className="vcs-label">From</span>
         <select
@@ -81,7 +86,7 @@ function DiffCompare({
           ))}
         </select>
       </label>
-      <Button size="sm" onClick={compare}>Compare</Button>
+      <Button size="sm" onClick={compare} disabled={sameVersion}>Compare</Button>
       {diffOverlay !== null && (
         <>
           <span className="vcs-summary">
@@ -110,12 +115,12 @@ type DiffTarget = { readonly value: string; readonly label: string };
 function diffTargets(
   repo: Repo,
 ): { readonly options: readonly DiffTarget[]; readonly resolve: (value: string) => { timeline: Timeline; label: string } | null } {
-  const options: DiffTarget[] = [{ value: "working", label: "Working copy" }];
+  const options: DiffTarget[] = [{ value: "working", label: "Current edit" }];
   const timelines = new Map<string, { timeline: Timeline; label: string }>();
   for (const [name, headId] of Object.entries(repo.branches)) {
     const commit = repo.commits[headId];
     if (commit === undefined) continue;
-    options.push({ value: `branch:${name}`, label: `Branch ${name}` });
+    options.push({ value: `branch:${name}`, label: `Cut · ${name}` });
     timelines.set(`branch:${name}`, { timeline: commit.timeline, label: `branch ${name}` });
   }
   const seen = new Set<string>();
@@ -136,10 +141,9 @@ export function VersionControl() {
   const openTab = useUiStore((state) => state.openTab);
   const timeline = useEditorStore((state) => state.timeline);
   const [message, setMessage] = useState("");
-  const [branchName, setBranchName] = useState("");
   const [mergeSource, setMergeSource] = useState("");
   const [mergeFeedback, setMergeFeedback] = useState<{repo: Repo; message: string} | null>(null);
-  const [diffBase, setDiffBase] = useState("working");
+  const [diffBase, setDiffBase] = useState("");
   const [diffTarget, setDiffTarget] = useState("working");
 
   const store = useVcsStore.getState();
@@ -168,13 +172,11 @@ export function VersionControl() {
    * What the working copy does to the linter's findings, measured against
    * the commit this one would sit on top of.
    */
-  const lintDeltaAgainstParent = useMemo(() => {
+  const workingLintDelta = useMemo(() => {
     if (repo === null) return null;
-    const parentId = currentCommit(repo).parents[0];
-    const parent = parentId === undefined ? undefined : repo.commits[parentId];
-    if (parent === undefined) return null;
-    return lintDelta(parent.timeline, timeline);
-  }, [repo, timeline]);
+    if (dirty === 0) return null;
+    return lintDelta(currentCommit(repo).timeline, timeline);
+  }, [repo, timeline, dirty]);
 
   if (repo === null) {
     return (
@@ -186,129 +188,54 @@ export function VersionControl() {
 
   const branches = Object.keys(repo.branches);
 
-  const checkoutGuarded = (name: string) => {
-    if (name === repo.currentBranch) return;
-    try { store.checkoutBranch(name); }
-    catch (error) { window.alert(error instanceof Error ? error.message : "Checkout failed"); }
-  };
+  const current = currentCommit(repo);
+  const suggestedBase = dirty > 0 ? current.id : current.parents[0] ?? current.id;
+  const base = diffBase || `commit:${suggestedBase}`;
 
   return (
     <section aria-label="version control" className="vcs-panel">
-      <header className="vcs-section">
-        <h3 className="vcs-label">Current branch</h3>
-        {repo.detachedAt !== null ? (
-          <div className="vcs-detached">
-            detached at {repo.detachedAt}{" "}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => { try { store.checkoutBranch(repo.currentBranch); } catch (error) { window.alert(error instanceof Error ? error.message : "Checkout failed"); } }}
-            >
-              back to {repo.currentBranch}
-            </Button>
-          </div>
-        ) : (
-          <select
-            aria-label="Current branch"
-            value={repo.currentBranch}
-            onChange={(event) => checkoutGuarded(event.target.value)}
-          >
-            {branches.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        )}
-        {dirty > 0 && (
-          <span className="vcs-summary text-warn">
-            {dirty} uncommitted change{dirty === 1 ? "" : "s"}
-          </span>
-        )}
-        <div className="vcs-row">
-          <Input
-            aria-label="New branch name"
-            placeholder="new branch"
-            value={branchName}
-            onChange={(event) => setBranchName(event.target.value)}
-          />
-          <Button
-            size="sm"
-            onClick={() => {
-              try {
-                store.createBranch(branchName.trim());
-                setBranchName("");
-              } catch (error) {
-                alert(error instanceof Error ? error.message : "invalid branch");
-              }
-            }}
-          >
-            Branch
-          </Button>
-        </div>
-      </header>
-
-      <div className="vcs-section">
-        <h3 className="vcs-label">Save a version</h3>
-        <div className="vcs-row">
-          <Input
-            aria-label="Commit message"
-            placeholder="commit message"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
-          <Button
-            size="sm"
-            disabled={dirty === 0 || message.trim().length === 0 || repo.detachedAt !== null}
-            title={
-              repo.detachedAt !== null
-                ? "Detached HEAD — check out a branch to commit"
-                : undefined
-            }
-            onClick={() => {
-              try {
-                store.commitCurrent(message.trim());
-                setMessage("");
-              } catch (error) {
-                window.alert(error instanceof Error ? error.message : "Commit failed");
-              }
-            }}
-          >
-            Commit
-          </Button>
-        </div>
-      </div>
-      {lintDeltaAgainstParent !== null && (
-        <div
-          className="vcs-summary"
-          title="Linter findings introduced or resolved by the uncommitted changes, against the commit they would sit on"
-        >
-          {lintDeltaAgainstParent.introduced.length === 0 &&
-          lintDeltaAgainstParent.resolved.length === 0 ? (
-            <span className="text-faint">no change in problems</span>
-          ) : (
-            <>
-              {lintDeltaAgainstParent.introduced.length > 0 && (
-                <span className="text-destructive">
-                  introduces {lintDeltaAgainstParent.introduced.length} problem
-                  {lintDeltaAgainstParent.introduced.length === 1 ? "" : "s"}
-                </span>
-              )}
-              {lintDeltaAgainstParent.introduced.length > 0 &&
-                lintDeltaAgainstParent.resolved.length > 0 && " · "}
-              {lintDeltaAgainstParent.resolved.length > 0 && (
-                <span className="text-success">
-                  resolves {lintDeltaAgainstParent.resolved.length} problem
-                  {lintDeltaAgainstParent.resolved.length === 1 ? "" : "s"}
-                </span>
-              )}
-            </>
+      {repo.detachedAt !== null && <div className="vcs-detached">
+        <p>Viewing saved version “{current.message}”</p>
+        <Button size="sm" onClick={() => {
+          try { store.checkoutBranch(repo.currentBranch); }
+          catch (error) { window.alert(error instanceof Error ? error.message : "Could not return to the cut"); }
+        }}>Return to {repo.currentBranch}</Button>
+      </div>}
+      {dirty > 0 ? <div className="vcs-section save-version">
+        <strong className="vcs-summary text-warn">{dirty} change{dirty === 1 ? "" : "s"} since the last save</strong>
+        {repo.detachedAt === null ? <form onSubmit={event => {
+          event.preventDefault();
+          if (!message.trim()) return;
+          try { store.commitCurrent(message.trim()); setMessage(""); }
+          catch (error) { window.alert(error instanceof Error ? error.message : "Could not save version"); }
+        }}>
+          <label className="vcs-field">What changed?
+            <Input placeholder="Describe your edit" value={message} onChange={event => setMessage(event.target.value)} />
+          </label>
+          <Button size="sm" variant="default" disabled={!message.trim()}>Save version</Button>
+        </form> : <p>Create another cut to save edits to this version.</p>}
+      </div> : repo.detachedAt === null && <p className="cut-save-state">All changes saved · Latest save: {current.message}</p>}
+      {workingLintDelta !== null && (workingLintDelta.introduced.length > 0 || workingLintDelta.resolved.length > 0) && (
+        <div className="vcs-summary" title="Issue changes since the last saved version">
+          {workingLintDelta.introduced.length > 0 && (
+            <span className="text-destructive">
+              introduces {workingLintDelta.introduced.length} problem
+              {workingLintDelta.introduced.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {workingLintDelta.introduced.length > 0 &&
+            workingLintDelta.resolved.length > 0 && " · "}
+          {workingLintDelta.resolved.length > 0 && (
+            <span className="text-success">
+              resolves {workingLintDelta.resolved.length} problem
+              {workingLintDelta.resolved.length === 1 ? "" : "s"}
+            </span>
           )}
         </div>
       )}
 
       <div className="vcs-section">
-        <h3 className="vcs-label">History</h3>
+        <h3 className="cut-history-title">Saved versions</h3>
         <ul className="vcs-history">
           {history.map((commit) => {
             const viewing = repo.detachedAt === commit.id;
@@ -326,7 +253,7 @@ export function VersionControl() {
                   <span className="vcs-commit-copy">
                     <span className="vcs-commit-title" title={commit.message}>{commit.message}</span>
                     <span className="vcs-commit-meta">
-                      <code>{commit.id}</code> · {commit.author}
+                      {commit.author} · <time>{new Date(commit.at).toLocaleString(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</time>
                       {commit.parents.length > 1
                         ? ` (merge of ${commit.parents.join(" + ")})`
                         : ""}
@@ -338,23 +265,33 @@ export function VersionControl() {
                     </span>
                   )}
                 </button>
+                <Button size="sm" variant="ghost" aria-label={`Compare ${commit.message} with current edit`}
+                  disabled={dirty === 0 && current.id === commit.id}
+                  onClick={() => {
+                    setDiffBase(`commit:${commit.id}`); setDiffTarget("working");
+                    store.setDiff(commit.timeline, commit.message, timeline, "Current edit");
+                    openTab("diff");
+                  }}>Compare</Button>
               </li>
             );
           })}
         </ul>
       </div>
 
+      <details className="cut-tools"><summary>Compare other versions</summary>
       <DiffCompare
         repo={repo}
         timeline={timeline}
-        diffBase={diffBase}
+        diffBase={base}
+        workingCommit={dirty === 0 ? current.id : null}
         diffTarget={diffTarget}
         onBase={setDiffBase}
         onTarget={setDiffTarget}
       />
 
-      <div className="vcs-section">
-        <h3 className="vcs-label">Merge branch</h3>
+      </details>
+      <details className="cut-tools"><summary>Combine cuts</summary><div className="vcs-section">
+        <span>Bring changes into {repo.currentBranch}</span>
         {dirty === 0 && mergeFeedback?.repo === repo && <p role="status" className="vcs-summary">{mergeFeedback.message}</p>}
         <div className="vcs-row">
           <select
@@ -373,7 +310,7 @@ export function VersionControl() {
           </select>
           <Button
             size="sm"
-            disabled={mergeSource === ""}
+            disabled={!mergeSource || !branches.includes(mergeSource) || mergeSource === repo.currentBranch || repo.detachedAt !== null}
             onClick={() => {
               try {
                 setMergeFeedback(null);
@@ -392,7 +329,7 @@ export function VersionControl() {
             Merge
           </Button>
         </div>
-      </div>
+      </div></details>
     </section>
   );
 }

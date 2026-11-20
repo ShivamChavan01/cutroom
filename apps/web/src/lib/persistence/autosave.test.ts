@@ -8,6 +8,7 @@ import {usePersistenceStore} from "./persistenceStore";
 import {deserializeProject} from "./project";
 import {writeProject, type StorageResult} from "./storage";
 import {useProjectPersistence} from "./usePersistence";
+import {useProductionStore} from "../../productionStore";
 
 vi.mock("react", async original => ({...await original<typeof import("react")>(), useEffect: vi.fn()}));
 vi.mock("./storage", async original => ({...await original<typeof import("./storage")>(), writeProject: vi.fn()}));
@@ -48,6 +49,19 @@ it("an older write cannot acknowledge a newer visible commit as saved", async ()
   await vi.advanceTimersByTimeAsync(700); expect(writes).toHaveLength(2);
   const restored = deserializeProject(writes[1]!.raw);
   expect(restored.repo.commits[restored.repo.branches.main!]!.message).toBe("Second snapshot");
+  writes[1]!.resolve(ok); await vi.advanceTimersByTimeAsync(0);
+  expect(usePersistenceStore.getState().status).toBe("saved");
+});
+
+it("saves production context changes without timeline edits and rejects stale context acknowledgements", async () => {
+  const document = {version: 1, brief: "First brief", styleReferences: [], requirements: [], evidence: []};
+  useProductionStore.getState().install(document); await vi.advanceTimersByTimeAsync(700);
+  expect(writes).toHaveLength(1);
+  useProductionStore.getState().install({...document, brief: "Revised brief"});
+  writes[0]!.resolve(ok); await vi.advanceTimersByTimeAsync(0);
+  expect(usePersistenceStore.getState().status).toBe("unsaved");
+  await vi.advanceTimersByTimeAsync(700);
+  expect(deserializeProject(writes[1]!.raw).production?.brief).toBe("Revised brief");
   writes[1]!.resolve(ok); await vi.advanceTimersByTimeAsync(0);
   expect(usePersistenceStore.getState().status).toBe("saved");
 });

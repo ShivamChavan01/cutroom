@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { lint, detachedAudioId } from "@cutroom/engine";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { canRedo, canUndo, lint, detachedAudioId } from "@cutroom/engine";
 import {clipAuthors} from "../lib/clipAuthors";
 import { planAudioDetach } from "../lib/detachAudio";
 import { indexedTimelineDuration } from "../lib/clipIndex";
@@ -19,12 +19,19 @@ import { useVcsStore } from "../vcsStore";
 import { useUiStore } from "../uiStore";
 import { Track } from "./Track";
 import { Button } from "./ui/button";
-import { Eye, EyeOff, Lock, Unlock, Volume2, VolumeX, MessageSquare, Scissors, Trash2, ZoomIn, ZoomOut, Crop, Plus } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Volume2, VolumeX, MessageSquare, Scissors, Trash2, ZoomIn, ZoomOut, Crop, Plus, Undo2, Redo2 } from "lucide-react";
 
 /** Trailing space so the last clip never sits flush against the edge. */
 const TAIL_MS = 5_000;
 const TRACK_HEADER_WIDTH = 154;
 const RULER_HEIGHT = 22;
+
+interface ScrubGesture {
+  readonly pointerId: number;
+  readonly offsetPx: number;
+  clientX: number;
+  frame: number | null;
+}
 
 // Stable empty references: passing fresh `{}` / `[]` per render would defeat
 // Track's memo on every playhead tick when no diff is active.
@@ -45,6 +52,61 @@ function conflictKeyAtTarget(target: EventTarget | null): string | null {
     : null;
 }
 
+type PlayheadProps = Pick<ComponentProps<"div">,
+  "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel" | "onLostPointerCapture"
+> & { readonly scale: ReturnType<typeof createTimeScale> };
+
+function TimelinePlayhead({ scale, ...pointerHandlers }: PlayheadProps) {
+  const playheadMs = usePlayhead();
+  const setPlayhead = useEditorStore((state) => state.setPlayhead);
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="playhead"
+      aria-valuemin={0}
+      aria-valuenow={Math.round(playheadMs)}
+      aria-valuetext={formatRulerTime(playheadMs)}
+      {...pointerHandlers}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 1_000 : 100;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          setPlayhead(playheadMs - step);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          setPlayhead(playheadMs + step);
+        }
+      }}
+      style={{
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        left: scale.timeToPx(playheadMs),
+        width: 2,
+        background: "var(--color-primary)",
+        cursor: "ew-resize",
+        touchAction: "none",
+        zIndex: 20,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 0,
+          left: -5,
+          width: 12,
+          height: 12,
+          borderRadius: "0 0 3px 3px",
+          background: "var(--color-primary)",
+          clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
 /**
  * The timeline editor: toolbar, ruler, track headers, lanes, playhead.
  *
@@ -56,7 +118,6 @@ export function Timeline() {
   const repo = useVcsStore(state => state.repo);
   const timeline = useEditorStore((state) => state.timeline);
   const trackIds = useTrackIds();
-  const playheadMs = usePlayhead();
   const setPlayhead = useEditorStore((state) => state.setPlayhead);
   const pxPerSecond = useEditorStore((state) => state.pxPerSecond);
   const setZoom = useEditorStore((state) => state.setZoom);
@@ -65,17 +126,13 @@ export function Timeline() {
   const hiddenTracks = useUiStore((state) => state.hiddenTrackIds);
   const mutedTracks = useUiStore((state) => state.mutedTrackIds);
   const setInspectorTab = useUiStore((state) => state.setInspectorTab);
+  const canSplit = useEditorStore((state) => canSplitAtPlayhead(state, lockedTracks));
   const selectedLocked = selection !== null && lockedTracks.includes(timeline.clips[selection]?.trackId ?? "");
 
   const [audioNotice, setAudioNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const detachPlan = useMemo(() => planAudioDetach(timeline, selection, lockedTracks), [timeline, selection, lockedTracks]);
 
   const scale = useMemo(() => createTimeScale(pxPerSecond), [pxPerSecond]);
-  const laneWidth = useMemo(
-    () => Math.max(600, scale.timeToPx(indexedTimelineDuration(timeline) + TAIL_MS)),
-    [scale, timeline],
-  );
-
   // Lint runs once per timeline object, not once per clip. The map fans the
   // single result out to the blocks that need markers.
   const diagnosticsByClip = useMemo(() => {
@@ -122,10 +179,11 @@ export function Timeline() {
   const laneRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ left: 0, width: 1_200 });
+  const laneWidth = Math.max(viewport.width, scale.timeToPx(indexedTimelineDuration(timeline) + TAIL_MS));
   const [pointerClipId, setPointerClipId] = useState<string | null>(null);
   const [focusedClipId, setFocusedClipId] = useState<string | null>(null);
   const [focusedConflictKey, setFocusedConflictKey] = useState<string | null>(null);
-  const draggingPlayheadRef = useRef(false);
+  const scrubRef = useRef<ScrubGesture | null>(null);
   const pinnedClipIds = useMemo(
     () => [selection, pointerClipId, focusedClipId],
     [selection, pointerClipId, focusedClipId],
@@ -170,21 +228,47 @@ export function Timeline() {
     [scale],
   );
 
-  const onPlayheadPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const clearScrub = useCallback(() => {
+    const scrub = scrubRef.current;
+    if (scrub === null) return;
+    if (scrub.frame !== null) cancelAnimationFrame(scrub.frame);
+    scrubRef.current = null;
+    useUiStore.getState().setScrubbing(false);
+  }, []);
+  useEffect(() => clearScrub, [clearScrub]);
+
+  const beginScrub = (event: React.PointerEvent<HTMLDivElement>, fromHandle: boolean) => {
+    if (event.button !== 0 || !event.isPrimary || scrubRef.current !== null) return;
     event.preventDefault();
     event.stopPropagation();
-    draggingPlayheadRef.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const offsetPx = fromHandle ? event.clientX - event.currentTarget.getBoundingClientRect().left : 0;
+    scrubRef.current = { pointerId: event.pointerId, offsetPx, clientX: event.clientX, frame: null };
+    useUiStore.getState().setScrubbing(true);
+    if (!fromHandle) setPlayhead(timeAtClientX(event.clientX));
   };
 
-  const onPlayheadPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggingPlayheadRef.current) return;
-    setPlayhead(timeAtClientX(event.clientX));
+  const moveScrub = (event: React.PointerEvent<HTMLDivElement>) => {
+    const scrub = scrubRef.current;
+    if (scrub?.pointerId !== event.pointerId) return;
+    scrub.clientX = event.clientX;
+    if (scrub.frame !== null) return;
+    scrub.frame = requestAnimationFrame(() => {
+      scrub.frame = null;
+      // Only the newest position can be shown on this frame.
+      setPlayhead(timeAtClientX(scrub.clientX - scrub.offsetPx));
+    });
   };
 
-  const onPlayheadPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    draggingPlayheadRef.current = false;
-    event.currentTarget.releasePointerCapture(event.pointerId);
+  const endScrub = (event: React.PointerEvent<HTMLDivElement>) => {
+    const scrub = scrubRef.current;
+    if (scrub?.pointerId !== event.pointerId) return;
+    clearScrub();
+    setPlayhead(timeAtClientX(event.clientX - scrub.offsetPx));
+  };
+
+  const cancelScrub = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (scrubRef.current?.pointerId === event.pointerId) clearScrub();
   };
 
   const rulerTicks = useMemo(
@@ -221,17 +305,21 @@ export function Timeline() {
     >
       {/* Toolbar */}
       <div className="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
-        <span className="sequence-label">Sequence 01</span>
+        <Button size="icon" variant="ghost" aria-label="Undo" title="Undo" disabled={!canUndo(history)}
+          onClick={() => useEditorStore.getState().undo()}><Undo2 /></Button>
+        <Button size="icon" variant="ghost" aria-label="Redo" title="Redo" disabled={!canRedo(history)}
+          onClick={() => useEditorStore.getState().redo()}><Redo2 /></Button>
         <Button
           size="sm"
           variant="ghost"
           onClick={splitAtPlayhead}
-          disabled={!canSplitAtPlayhead()}
+          disabled={!canSplit}
           title="Split at playhead (S)"
         >
           <Scissors /> Split
         </Button>
         <Button size="sm" variant="ghost" disabled={selection === null || selectedLocked} onClick={() => {
+          useUiStore.getState().setPropertiesTab("inspector");
           setInspectorTab("clip");
           requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="In point seconds"]')?.focus());
         }}><Crop /> Trim</Button>
@@ -341,7 +429,13 @@ export function Timeline() {
             {/* Ruler */}
             <div
               className="relative border-b border-border"
-              style={{ height: RULER_HEIGHT }}
+              data-testid="timeline-ruler"
+              onPointerDown={(event) => beginScrub(event, false)}
+              onPointerMove={moveScrub}
+              onPointerUp={endScrub}
+              onPointerCancel={cancelScrub}
+              onLostPointerCapture={cancelScrub}
+              style={{ height: RULER_HEIGHT, zIndex: 1, cursor: "col-resize", touchAction: "none" }}
             >
               {rulerTicks.map((ms) => (
                 <div
@@ -404,54 +498,14 @@ export function Timeline() {
               />
             ))}
 
-            {/* Playhead with a draggable handle */}
-            <div
-              role="slider"
-              tabIndex={0}
-              aria-label="playhead"
-              aria-valuemin={0}
-              aria-valuenow={Math.round(playheadMs)}
-              aria-valuetext={formatRulerTime(playheadMs)}
-              onPointerDown={onPlayheadPointerDown}
-              onPointerMove={onPlayheadPointerMove}
-              onPointerUp={onPlayheadPointerUp}
-              onPointerCancel={onPlayheadPointerUp}
-              onKeyDown={(event) => {
-                const step = event.shiftKey ? 1_000 : 100;
-                if (event.key === "ArrowLeft") {
-                  event.preventDefault();
-                  setPlayhead(playheadMs - step);
-                } else if (event.key === "ArrowRight") {
-                  event.preventDefault();
-                  setPlayhead(playheadMs + step);
-                }
-              }}
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: scale.timeToPx(playheadMs),
-                width: 2,
-                background: "var(--color-primary)",
-                cursor: "ew-resize",
-                touchAction: "none",
-                zIndex: 20,
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: -5,
-                  width: 12,
-                  height: 12,
-                  borderRadius: "0 0 3px 3px",
-                  background: "var(--color-primary)",
-                  clipPath: "polygon(0 0, 100% 0, 50% 100%)",
-                }}
-              />
-            </div>
+            <TimelinePlayhead
+              scale={scale}
+              onPointerDown={(event) => beginScrub(event, true)}
+              onPointerMove={moveScrub}
+              onPointerUp={endScrub}
+              onPointerCancel={cancelScrub}
+              onLostPointerCapture={cancelScrub}
+            />
           </div>
         </div>
       </div>

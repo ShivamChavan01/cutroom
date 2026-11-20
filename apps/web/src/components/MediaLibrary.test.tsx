@@ -23,7 +23,7 @@ vi.mock("../uiStore", async (importOriginal) => {
     ...actual,
     useUiStore: Object.assign(
       <T,>(selector: (state: ReturnType<typeof actual.useUiStore.getState>) => T) => selector(actual.useUiStore.getState()),
-      { setState: actual.useUiStore.setState },
+      { getState: actual.useUiStore.getState, setState: actual.useUiStore.setState },
     ),
   };
 });
@@ -44,7 +44,11 @@ describe("media library controls", () => {
     useEditorStore.getState().loadTimeline(putAsset(emptyTimeline("library-test"), {
       id: "cabin-asset", kind: "video", duration: 2_000, width: 1920, height: 1080, bytes: 2048, name: "Cabin.mp4", tags: ["B-roll"],
     }));
+    useEditorStore.getState().dispatch({type:"addClip", clip:{id:"shot", trackId:"v1", assetId:"cabin-asset", start:0, inPoint:0, outPoint:2000, duration:2000, volume:1}});
+    useEditorStore.getState().selectClip("shot");
     const html = renderToStaticMarkup(<SidePanel />);
+    expect(html).toContain("Add to timeline");
+    expect(html).toMatch(/<details[^>]*><summary>File details<\/summary>.*?<code>cabin-asset<\/code>/);
     expect(html).toContain("Cabin.mp4");
     expect(html).toContain("1920 × 1080");
     expect(html).toContain("B-roll");

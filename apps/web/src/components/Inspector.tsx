@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
-import { lint, timelineDuration } from "@cutroom/engine";
+import { assetById, lint, timelineDuration } from "@cutroom/engine";
 import {clipAuthors} from "../lib/clipAuthors";
 import {useVcsStore} from "../vcsStore";
 import { Link2, MousePointer2, RotateCcw, Scissors, Trash2 } from "lucide-react";
 import { authorColor } from "../lib/identity";
-import { deleteSelected, splitAtPlayhead } from "../lib/actions";
+import { canSplitAtPlayhead, deleteSelected, splitAtPlayhead } from "../lib/actions";
 import { clipPropertyOp, type ClipProperty } from "../lib/clipProperties";
 import { useEditorStore, useSelection } from "../store";
 import { useUiStore } from "../uiStore";
@@ -12,6 +12,7 @@ import { formatTime } from "../theme";
 import { Button } from "./ui/button";
 import { MediaPoster } from "./MediaPoster";
 import { ProjectSettings } from "./ProjectSettings";
+import { GainControl } from "./GainControl";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -48,14 +49,14 @@ export function Inspector() {
   const timeline = useEditorStore((state) => state.timeline);
   const history = useEditorStore((state) => state.history);
   const repo = useVcsStore(state => state.repo);
-  const playheadMs = useEditorStore((state) => state.playheadMs);
   const dispatch = useEditorStore((state) => state.dispatch);
   const selection = useSelection();
   const lockedTracks = useUiStore((state) => state.lockedTrackIds);
   const clip = selection === null ? undefined : timeline.clips[selection];
-  const asset = clip === undefined ? undefined : timeline.assets[clip.assetId];
+  const asset = clip === undefined ? undefined : assetById(timeline, clip.assetId);
+  const audioOnly = asset?.kind === "audio" || timeline.tracks.some(track => track.id === clip?.trackId && track.kind === "audio");
   const locked = clip !== undefined && lockedTracks.includes(clip.trackId);
-  const canSplit = clip !== undefined && !locked && playheadMs > clip.start && playheadMs < clip.start + clip.duration;
+  const canSplit = useEditorStore((state) => canSplitAtPlayhead(state, lockedTracks));
   const tab = useUiStore((state) => state.inspectorTab);
   const setTab = useUiStore((state) => state.setInspectorTab);
   const [linked, setLinked] = useState(true);
@@ -70,6 +71,10 @@ export function Inspector() {
     catch (reason) { return reason instanceof Error ? reason.message : "Could not edit clip."; }
   };
 
+  const audioControls = clip !== undefined && asset?.kind !== "image" && (
+    <section className="inspector-section" aria-label="Clip audio"><h3 className="inspector-section-title">Audio</h3><GainControl clip={clip} disabled={locked} onError={setError} /></section>
+  );
+
   return <Tabs value={tab} onValueChange={(value) => { if (value === "clip" || value === "sequence" || value === "project") setTab(value); }} className="studio-inspector" data-testid="inspector">
     <TabsList variant="line" aria-label="Inspector views">
       {(["clip", "sequence", "project"] as const).map((id) => <TabsTrigger key={id} value={id}>{id[0]?.toUpperCase()}{id.slice(1)}</TabsTrigger>)}
@@ -79,18 +84,19 @@ export function Inspector() {
       <header className="inspector-heading"><h2>Clip properties</h2></header>
       {clip === undefined ? <div className="inspector-empty"><MousePointer2 size={24} aria-hidden /><h3>No clip selected</h3><p>Select a clip in the timeline to inspect and edit its properties.</p></div> : <Fragment key={clip.id}>
         <div className="inspector-media"><MediaPoster assetId={clip.assetId} /><div><h3 title={asset?.name ?? clip.id}>{asset?.name ?? clip.id}</h3><span>{asset?.width !== undefined && asset.height !== undefined ? `${asset.width} × ${asset.height} · ` : ""}{asset?.mimeType ?? asset?.kind ?? "media"}</span><div className="inspector-author"><span className="inspector-author-dot" style={{background: authorColor(author ?? "unknown")}} />{author ?? "Unknown author"}</div></div></div>
-        <section className="inspector-section" aria-label="Clip transform"><h3 className="inspector-section-title">Transform<button type="button" aria-label="Reset transform" disabled={locked} onClick={() => { try { dispatch({ type: "setTransform", clipId: clip.id, x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }); setError(null); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not reset transform."); } }}><RotateCcw size={13} /></button></h3>
+        {audioOnly && audioControls}
+        <section className="inspector-section" aria-label="Clip timing"><h3 className="inspector-section-title">Timing</h3><NumericProperty label="Clip start seconds" title={formatTime(clip.start)} value={clip.start / 1000} disabled={locked} onCommit={(value) => edit("start", value)} /><NumericProperty label="In point seconds" title={formatTime(clip.inPoint)} value={clip.inPoint / 1000} disabled={locked} onCommit={(value) => edit("inPoint", value)} /><NumericProperty label="Out point seconds" title={formatTime(clip.outPoint)} value={clip.outPoint / 1000} disabled={locked} onCommit={(value) => edit("outPoint", value)} /><dl><Row label="Duration" value={formatTime(clip.duration)} /></dl><label className="inspector-number"><span>Track</span><select aria-label="Clip track" value={clip.trackId} disabled={locked} onChange={(event) => { try { dispatch({type: "moveClip", clipId:clip.id, start:clip.start, trackId:event.target.value}); setError(null); } catch(reason) { setError(reason instanceof Error ? reason.message : "Could not move clip."); } }}>{timeline.tracks.filter((track) => track.kind === (audioOnly ? "audio" : "video")).map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select></label></section>
+        {!audioOnly && audioControls}
+        {!audioOnly && <details className="inspector-section" aria-label="Clip transform"><summary>Transform</summary><button type="button" aria-label="Reset transform" disabled={locked} onClick={() => { try { dispatch({ type: "setTransform", clipId: clip.id, x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }); setError(null); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not reset transform."); } }}><RotateCcw size={13} />Reset transform</button>
           <div className="property-pair"><NumericProperty label="Position X" value={clip.x ?? 0} disabled={locked} onCommit={(value) => edit("x", value)} /><NumericProperty label="Position Y" value={clip.y ?? 0} disabled={locked} onCommit={(value) => edit("y", value)} /></div>
           <div className="property-pair"><NumericProperty label="Scale X %" value={(clip.scaleX ?? 1) * 100} disabled={locked} onCommit={(value) => edit("scaleX", value)} /><NumericProperty label="Scale Y %" value={(clip.scaleY ?? 1) * 100} disabled={locked} onCommit={(value) => edit("scaleY", value)} /><button type="button" className="scale-link" aria-label="Link scale" aria-pressed={linked} onClick={() => setLinked(!linked)}><Link2 size={14} /></button></div>
           <NumericProperty label="Rotation" value={clip.rotation ?? 0} disabled={locked} onCommit={(value) => edit("rotation", value)} />
-        </section>
-        <section className="inspector-section" aria-label="Clip timing"><h3 className="inspector-section-title">Timing</h3><NumericProperty label="Clip start seconds" title={formatTime(clip.start)} value={clip.start / 1000} disabled={locked} onCommit={(value) => edit("start", value)} /><NumericProperty label="In point seconds" title={formatTime(clip.inPoint)} value={clip.inPoint / 1000} disabled={locked} onCommit={(value) => edit("inPoint", value)} /><NumericProperty label="Out point seconds" title={formatTime(clip.outPoint)} value={clip.outPoint / 1000} disabled={locked} onCommit={(value) => edit("outPoint", value)} /><dl><Row label="Duration" value={formatTime(clip.duration)} /></dl><label className="inspector-number"><span>Track</span><select aria-label="Clip track" value={clip.trackId} disabled={locked} onChange={(event) => { try { dispatch({type: "moveClip", clipId:clip.id, start:clip.start, trackId:event.target.value}); setError(null); } catch(reason) { setError(reason instanceof Error ? reason.message : "Could not move clip."); } }}>{timeline.tracks.filter((track) => asset?.kind === "audio" ? track.kind === "audio" : track.kind === "video").map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select></label></section>
-        <section className="inspector-section" aria-label="Clip audio"><h3 className="inspector-section-title">Audio</h3><label className="volume-control"><span>Volume</span><input type="range" aria-label="Clip volume" min="0" max="100" value={Math.round(clip.volume * 100)} disabled={locked} onChange={(event) => setError(edit("volume",Number(event.target.value)))} /><output>{Math.round(clip.volume * 100)}%</output></label></section>
-        <section className="inspector-section" aria-label="Source media"><h3 className="inspector-section-title">Source</h3><dl><Row label="Asset" value={clip.assetId.slice(0, 12)} /></dl></section>
+        </details>}
+        <details className="inspector-section" aria-label="Source media"><summary>Source details</summary><dl><Row label="Asset" value={clip.assetId} /></dl></details>
         <div className="inspector-actions"><Button size="sm" onClick={splitAtPlayhead} disabled={!canSplit} title="Split at playhead (S)"><Scissors /> Split at playhead</Button><Button size="sm" variant="destructive" disabled={locked} onClick={deleteSelected} title="Delete selected clip"><Trash2 /> Delete</Button></div>
         {!canSplit && <p className="inspector-hint">Place the playhead inside this clip to split.</p>}
         {locked && <p className="inspector-hint">This track is locked. Unlock it to edit.</p>}
-        {issues.length > 0 && <section className="inspector-section" aria-label="Clip issues"><h3 className="inspector-section-title">Issues</h3>{issues.map((issue,index) => <p key={`${issue.key}-${index}`} className={`inspector-issue inspector-issue-${issue.severity}`}>{issue.message}</p>)}</section>}
+        {issues.length > 0 && <section className="inspector-section" aria-label="Clip issues"><h3 className="inspector-section-title">Issues</h3><Button variant="outline" size="sm" onClick={() => useUiStore.getState().setRail("issues")}>View issues ({issues.length})</Button></section>}
       </Fragment>}
     </>}
     {error !== null && <p className="editor-error" role="alert">{error}</p>}

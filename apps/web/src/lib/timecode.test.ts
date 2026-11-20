@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatRulerTime,
   formatTimecode,
+  indexCutStarts,
   nextCut,
   previousCut,
 } from "./timecode";
@@ -32,7 +33,20 @@ describe("formatRulerTime", () => {
 });
 
 describe("cut navigation", () => {
-  const cuts = [{ start: 0 }, { start: 4_000 }, { start: 9_000 }];
+  const cuts = indexCutStarts([{ start: 9_000 }, { start: 0 }, { start: 4_000 }, { start: 4_000 }]);
+
+  it("indexes unsorted starts across tracks and collapses cuts at the same time", () => {
+    expect(cuts).toEqual([0, 4_000, 9_000]);
+  });
+
+  it("preserves the one-millisecond boundary when scrubbing at fractional times", () => {
+    expect(previousCut(cuts, 4_001)).toBe(0);
+    expect(previousCut(cuts, 4_001.1)).toBe(4_000);
+    expect(nextCut(cuts, 3_999)).toBe(4_000);
+    expect(nextCut(cuts, 3_999.1)).toBe(9_000);
+    expect(previousCut(cuts, NaN)).toBeNull();
+    expect(nextCut(cuts, NaN)).toBeNull();
+  });
 
   it("finds the previous cut start", () => {
     expect(previousCut(cuts, 5_000)).toBe(4_000);

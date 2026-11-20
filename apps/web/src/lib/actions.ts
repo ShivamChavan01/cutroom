@@ -32,11 +32,13 @@ export function deleteSelected(): boolean {
   return true;
 }
 
-export function canSplitAtPlayhead(): boolean {
-  const { timeline, selectedClipId, playheadMs } = useEditorStore.getState();
+export function canSplitAtPlayhead(
+  { timeline, selectedClipId, playheadMs }: Pick<ReturnType<typeof useEditorStore.getState>, "timeline" | "selectedClipId" | "playheadMs">,
+  lockedTrackIds: readonly string[],
+): boolean {
   if (selectedClipId === null) return false;
   const clip = timeline.clips[selectedClipId];
   if (clip === undefined) return false;
-  if (useUiStore.getState().lockedTrackIds.includes(clip.trackId)) return false;
+  if (lockedTrackIds.includes(clip.trackId)) return false;
   return playheadMs > clip.start && playheadMs < clip.start + clip.duration;
 }

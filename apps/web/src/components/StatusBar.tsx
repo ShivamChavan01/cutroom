@@ -9,6 +9,7 @@ import {
 } from "../lib/persistence/usePersistence";
 import { usePersistenceStore } from "../lib/persistence/persistenceStore";
 import { useEditorStore, usePlayhead } from "../store";
+import { indexedClipCount } from "../lib/clipIndex";
 import { useVcsStore } from "../vcsStore";
 import { Button } from "./ui/button";
 
@@ -18,6 +19,7 @@ import { Button } from "./ui/button";
  * visible rather than silent.
  */
 export function StatusBar() {
+  const reviewOpen = useUiStore(state => state.reviewOpen);
   const timeline = useEditorStore((state) => state.timeline);
   const authorId = useEditorStore((state) => state.authorId);
   const pending = useVcsStore((state) => state.pending);
@@ -114,9 +116,9 @@ export function StatusBar() {
             ✓ clean
           </span>
         )}
-        <span title="Linter issues">
-          {Object.keys(timeline.clips).length === 0 ? "nothing to verify" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
-        </span>
+        <button type="button" title="Show timeline issues" onClick={() => useUiStore.getState().setRail("issues")}>
+          {indexedClipCount(timeline) === 0 ? "nothing to verify" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
+        </button>
         <span className={save.className} title={message ?? undefined} data-save-status={status}>
           {save.text}
         </span>
@@ -127,7 +129,7 @@ export function StatusBar() {
           </span>
         )}
         <span className="flex-1" />
-        <span className="hidden sm:inline">Ctrl+K commands · S split · Space play</span>
+        <button type="button" aria-expanded={reviewOpen} onClick={() => useUiStore.getState().setReviewOpen(!reviewOpen)}>Activity</button>
         <span className="tabular-nums text-foreground">{formatTimecode(playheadMs, { fps: timeline.fps ?? 30 })}</span>
         <span title="Local author identity">{authorId}</span>
       </footer>

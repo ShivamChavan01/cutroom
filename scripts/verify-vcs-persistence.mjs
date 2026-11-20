@@ -61,7 +61,7 @@ try {
     return { undo, redo, checkoutError, dirtyPreserved, branchRestored, cancelledWithoutEdits };
   });
   for (const name of ["undo", "redo", "dirtyPreserved", "branchRestored", "cancelledWithoutEdits"]) assert.equal(workflow[name], true, name);
-  assert.match(workflow.checkoutError, /uncommitted/i);
+  assert.match(workflow.checkoutError, /Save a version or create another cut/);
   const before = await snapshot();
   await until(async () => {
     const result = await (await import("/src/lib/persistence/storage.ts")).readProject();

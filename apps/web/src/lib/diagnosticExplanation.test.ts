@@ -9,12 +9,12 @@ it("explains the actual 1200ms gap with precise bounds, track, and editorial unc
   if (gap === undefined) throw new Error("Expected sample gap");
   const explanation = explainDiagnostic(timeline, gap);
   expect(gap.clipIds).toEqual(["opening", "middle"]);
-  expect(explanation.location).toBe("1.80s to 3.00s on video track V1");
-  expect(explanation.explanation).toContain("1.20 seconds");
-  expect(explanation.explanation).toContain("Keep the pause if deliberate");
+  expect(explanation.location).toBe("1.80s to 3.00s");
+  expect(explanation.title).toBe("1.2-second gap on V1");
+  expect(explanation.explanation).toContain("decide whether to keep it");
   const moved = applyOp(timeline, {type: "moveClip", clipId: "middle", start: 4000});
   const later = lint(moved).find(item => item.rule === "gap");
-  expect(explainDiagnostic(moved, later!).location).toBe("1.80s to 4.00s on video track V1");
+  expect(explainDiagnostic(moved, later!).location).toBe("1.80s to 4.00s");
 });
 it("handles missing references and unknown rules without inventing timing or certainty", () => {
   const finding = {rule: "future-rule", key: "test", severity: "warning" as const, clipIds: ["missing"], message: "External check"};

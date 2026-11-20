@@ -1,33 +1,32 @@
 import { demoHref, isDemoWorkspace } from "../lib/workspace";
-import { Upload } from "lucide-react";
+import { Upload, ChevronDown, MessageSquare } from "lucide-react";
 import { UploadButton } from "./UploadButton";
 import { ExportMenu } from "./ExportMenu";
+import { useUiStore } from "../uiStore";
 import { useEditorStore } from "../store";
-import { useVcsStore } from "../vcsStore";
-import { Badge } from "./ui/badge";
 
 /** Top strip: identity, branch, primary actions. Nothing decorative. */
 export function TopBar() {
-  const authorId = useEditorStore((state) => state.authorId);
-  const repo = useVcsStore((state) => state.repo);
-  const projectId = useEditorStore((state) => state.timeline.id);
-  const detachedAt = repo?.detachedAt ?? null;
-  const branch = detachedAt ?? repo?.currentBranch ?? "—";
-
+  const assistantOpen = useUiStore(state => state.propertiesTab === "assistant");
+  const projectId = useEditorStore(state => state.timeline.id);
   return (
     <header className="studio-topbar">
       <div className="studio-brand"><span>cutroom<span className="studio-brand-dot">.</span></span></div>
-      <div className="studio-project"><span className="studio-project-type">VIDEO PROJECT</span><span>{projectId === "untitled" ? "Untitled project" : projectId}</span></div>
-      <Badge title={detachedAt !== null ? "Detached HEAD" : "Current branch"}>
-        ⎇ {branch}
-      </Badge>
-      <span className="studio-topbar-spacer" />
-      <UploadButton icon={<Upload />} label="Add video" />
-      <a className="workspace-link" href={isDemoWorkspace() ? "?" : demoHref()} target="_blank" rel="noopener noreferrer">{isDemoWorkspace() ? "Personal workspace ↗" : "Try demo project ↗"}</a>
+      <div className="project-navigation">
+        <button id="project-menu-trigger" className="project-trigger" type="button" popoverTarget="project-menu" aria-label="Project menu">
+          {projectId === "untitled" ? "Untitled project" : projectId}<ChevronDown size={14} aria-hidden />
+        </button>
+        <div popover="auto" id="project-menu" className="project-popover">
+          {isDemoWorkspace() && <button type="button" popoverTarget="sample-guide">Sample guide</button>}
+          <a href={isDemoWorkspace() ? "?" : demoHref()} target="_blank" rel="noopener noreferrer">{isDemoWorkspace() ? "Personal workspace ↗" : "Try demo project ↗"}</a>
+        </div>
+      </div>
+      <UploadButton icon={<Upload />} label="Add media" />
       <ExportMenu />
-      <span title="Local author identity" className="text-xs text-muted">
-        <span className="studio-avatar">{authorId.slice(0, 1).toUpperCase()}</span>
-      </span>
+      <button type="button" id="open-assistant" aria-expanded={assistantOpen} aria-controls="assistant-sidebar"
+        className="assistant-toggle" onClick={() => useUiStore.getState().setPropertiesTab(assistantOpen ? null : "assistant")}>
+        <MessageSquare size={16} aria-hidden />Assistant
+      </button>
     </header>
   );
 }

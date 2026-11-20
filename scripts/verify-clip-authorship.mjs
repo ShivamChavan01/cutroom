@@ -1,3 +1,4 @@
+import { openProjectTool } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import {mkdir, writeFile} from "node:fs/promises";
 import path from "node:path";
@@ -26,13 +27,13 @@ async function author(id, expected) {
   assert.equal((await page.locator(".inspector-author").innerText()).trim(), expected);
   await page.getByRole("button", {name: `clip ${id}`, exact: true}).locator(`[title="last edited by ${expected}"]`).waitFor();
 }
-async function versions() {await page.getByRole("button", {name: "Versions", exact: true}).click();}
+async function versions() {await openProjectTool(page, "Versions");}
 async function checkout(branch) {
-  await versions(); await page.getByRole("combobox", {name: "Current branch", exact: true}).selectOption(branch); await saved();
+  await versions(); await page.getByRole("combobox", {name: "Current cut", exact: true}).selectOption(branch); await saved();
 }
 async function commit(message) {
-  await versions(); await page.getByRole("textbox", {name: "Commit message", exact: true}).fill(message);
-  await page.getByRole("button", {name: "Commit", exact: true}).click(); await saved();
+  await versions(); await page.getByRole("textbox", {name: "What changed?", exact: true}).fill(message);
+  await page.getByRole("button", {name: "Save version", exact: true}).click(); await saved();
 }
 async function start(value) {
   const field = page.getByRole("spinbutton", {name: "Clip start seconds", exact: true});
@@ -42,7 +43,7 @@ async function project() {
   await saved();
   return page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("cutroom", 1);
+      const request = indexedDB.open("cutroom");
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -65,14 +66,17 @@ try {
   await select("opening"); await start("0.4"); await commit("QA main cut");
   await author("opening", "QA main editor");
   const mainHead = (await project()).repo.branches.main;
-  await page.getByRole("textbox", {name: "New branch name", exact: true}).fill("qa-feature");
-  await page.getByRole("button", {name: "Branch", exact: true}).click(); await checkout("qa-feature");
+  await page.getByText("Create another cut", {exact: true}).click();
+  await page.getByLabel("Switch to this cut").uncheck();
+  await page.getByLabel("Cut name", {exact: true}).fill("qa-feature");
+  await page.getByRole("button", {name: "Create cut", exact: true}).click(); await checkout("qa-feature");
   await author("opening", "QA main editor");
   passed("checkout retains committed attribution");
   await identity("QA feature editor");
   await select("opening"); await start("0.6"); await commit("QA child commit");
   const featureHead = (await project()).repo.branches["qa-feature"];
   await checkout("main"); await author("opening", "QA main editor");
+  if (!await page.getByRole("combobox", {name: "Merge source", exact: true}).isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
   await page.getByRole("combobox", {name: "Merge source", exact: true}).selectOption("qa-feature");
   await page.getByRole("button", {name: "Merge", exact: true}).click(); await saved();
   assert.equal((await project()).repo.branches.main, featureHead);
@@ -84,18 +88,19 @@ try {
   passed("refresh derives the same author from saved snapshots");
   await versions(); await page.getByRole("button").filter({hasText: "QA main cut"}).click(); await saved();
   assert.equal((await project()).repo.detachedAt, mainHead); await author("opening", "QA main editor");
-  await page.getByRole("button", {name: "back to main", exact: true}).click(); await saved();
+  await page.getByRole("button", {name: "Return to main", exact: true}).click(); await saved();
   await author("opening", "QA feature editor");
   passed("detached inspection follows the viewed commit");
   await identity("QA working editor"); await select("opening"); await start("0.8");
   await author("opening", "QA working editor");
-  await page.getByRole("button", {name: "Media", exact: true}).focus(); await page.keyboard.press("Control+z");
+  await page.getByRole("button", {name: "Project menu", exact: true}).focus(); await page.keyboard.press("Control+z");
   await author("opening", "QA feature editor");
-  await page.getByRole("button", {name: "Media", exact: true}).focus(); await page.keyboard.press("Control+Shift+z");
+  await page.getByRole("button", {name: "Project menu", exact: true}).focus(); await page.keyboard.press("Control+Shift+z");
   await author("opening", "QA working editor");
-  await page.getByRole("button", {name: "Media", exact: true}).focus(); await page.keyboard.press("Control+z");
+  await page.getByRole("button", {name: "Project menu", exact: true}).focus(); await page.keyboard.press("Control+z");
   passed("working edits, undo and redo distinguish operation and committed authors");
-  await versions(); await page.getByRole("combobox", {name: "Merge source", exact: true}).selectOption("alternate");
+  await versions(); if (!await page.getByRole("combobox", {name: "Merge source", exact: true}).isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
+  await page.getByRole("combobox", {name: "Merge source", exact: true}).selectOption("alternate");
   await page.getByRole("button", {name: "Merge", exact: true}).click();
   await page.getByRole("button", {name: "Keep middle", exact: true}).click();
   await page.getByPlaceholder("merge commit message", {exact: true}).fill("QA attribution merge");
@@ -105,7 +110,7 @@ try {
   assert.equal(mergeCommit.author, "QA working editor");
   await author("opening", "QA feature editor"); await author("middle", "Editor A"); await author("score", "Demo");
   passed("two-parent merge preserves clip-specific provenance");
-  await page.getByRole("button", {name: "Media", exact: true}).click();
+  await openProjectTool(page, "Media");
   page.once("dialog", dialog => dialog.accept("attribution"));
   await page.getByRole("button", {name: "Tag motion.mp4", exact: true}).click(); await commit("QA metadata only");
   await page.reload(); await saved(); await author("opening", "QA feature editor"); await author("score", "Demo");

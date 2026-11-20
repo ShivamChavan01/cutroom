@@ -73,15 +73,23 @@ export function clipTransform(clip: Clip): string {
 }
 
 export function advancePlayback({
-  at, previousFrame, frame, duration, buffering = false,
+  at, previousFrame, frame, duration, buffering = false, mediaLeadMs,
 }: {
   readonly at: number;
   readonly previousFrame: number | null;
   readonly frame: number;
   readonly duration: number;
   readonly buffering?: boolean;
+  readonly mediaLeadMs?: number | undefined;
 }): { readonly time: number; readonly ended: boolean } {
-  const elapsed = buffering || previousFrame === null ? 0 : Math.max(0, frame - previousFrame);
-  const time = Math.min(duration, at + elapsed);
+  const elapsed = previousFrame === null ? 0 : frame - previousFrame;
+  // When a single video stalls, hold its timeline position until media time advances.
+  const advance = buffering || previousFrame === null ? 0 : Math.max(0, mediaLeadMs ?? elapsed);
+  const time = Math.min(duration, at + advance);
   return { time, ended: time >= duration };
+}
+
+/** A single pointer update that skips at least ten seconds of the timeline. */
+export function isLargeScrubJump(previousMs: number | null, currentMs: number): boolean {
+  return previousMs !== null && Math.abs(currentMs - previousMs) >= 10_000;
 }

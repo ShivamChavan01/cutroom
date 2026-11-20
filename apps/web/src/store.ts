@@ -20,7 +20,17 @@ import {
 import { getOrCreateAuthorId } from "./lib/identity";
 import { useUiStore } from "./uiStore";
 import { indexedClipsOnTrack } from "./lib/clipIndex";
-import { previewPlan } from "./lib/assistant/proposal";
+import { useProductionStore } from "./productionStore";
+import { assertUnlocked, previewPlan } from "./lib/assistant/proposal";
+import { audioClip, createGainSuggestions, gainFeedback, gainOffer, suppressGainOffer, type GainSuggestions } from "./lib/gainSuggestions";
+
+export interface GainPreview {
+  readonly proposal: ReturnType<typeof previewPlan>;
+  readonly history: History;
+  readonly epoch: number;
+  readonly offerKey: string;
+  readonly lockedTracks: readonly string[];
+}
 
 export interface EditorStore {
   /** Runtime ownership token for async imports; changes on session replacement, not edits. */
@@ -29,11 +39,23 @@ export interface EditorStore {
   /** Derived from history on every mutation. Never written directly. */
   readonly timeline: Timeline;
   readonly selectedClipId: string | null;
+  readonly selectionRevision: number;
   readonly playheadMs: number;
   readonly isPlaying: boolean;
   /** Zoom level. §2 timeScale reads this; one value drives all rendering. */
   readonly pxPerSecond: number;
   readonly authorId: string;
+  readonly gainSuggestions: GainSuggestions;
+  readonly beginGainGesture: (clipId: string) => void;
+  readonly changeGain: (clipId: string, volume: number) => void;
+  readonly finishGainGesture: (clipId: string) => void;
+  readonly cancelGainGesture: (clipId: string) => void;
+  readonly previewGainSuggestion: (key: string) => GainPreview;
+  readonly applyGainSuggestion: (preview: GainPreview) => void;
+  readonly dismissGainSuggestion: (key: string) => void;
+  readonly noteGainSuggestion: (key: string) => void;
+  readonly setGainSuggestionsEnabled: (enabled: boolean) => void;
+  readonly invalidateGainContext: (scope: { replace: boolean; blocked: boolean }) => void;
 
   /** Local edit — the store is the "local edits" call site for applyOp. */
   readonly dispatch: (op: Op) => void;
@@ -65,56 +87,151 @@ function derive(history: History): Pick<EditorStore, "history" | "timeline"> {
   return { history, timeline: current(history) };
 }
 
-export const useEditorStore = create<EditorStore>()((set) => ({
+function applyProposalEdits(state: EditorStore, before: Timeline, ops: readonly Op[]) {
+  if (state.timeline !== before) throw new Error("The timeline changed. Generate a new proposal before applying.");
+  const proposal = previewPlan(before, { summary: "Apply proposal", ops: [...ops] }, useUiStore.getState().lockedTrackIds, useProductionStore.getState().document);
+  if (proposal.production?.regression != null) throw new Error(proposal.production.regression);
+  let history = state.history;
+  for (const op of ops) history = record(history, op, state.authorId);
+  return { history, timeline: proposal.after };
+}
+
+function replacedGainContext(session: GainSuggestions): GainSuggestions {
+  return { ...createGainSuggestions(), enabled: session.enabled, blocked: session.blocked, epoch: session.epoch + 1 };
+}
+
+export const useEditorStore = create<EditorStore>()((set, get) => ({
   sessionId: 0,
   ...derive(createHistory(emptyTimeline("untitled"))),
   selectedClipId: null,
+  selectionRevision: 0,
   playheadMs: 0,
   isPlaying: false,
   pxPerSecond: 50,
   authorId: getOrCreateAuthorId(),
+  gainSuggestions: createGainSuggestions(),
+
+  beginGainGesture: (clipId) => set(state => {
+    const session = state.gainSuggestions;
+    if (session.gesture?.clip.id === clipId) return state;
+    const clip = audioClip(state.timeline, clipId);
+    if (!session.enabled || session.blocked || state.isPlaying || clip === undefined || state.selectedClipId !== clipId
+      || useUiStore.getState().lockedTrackIds.includes(clip.trackId)) return state;
+    return { gainSuggestions: { ...session, epoch: session.epoch + 1, gesture: { clip, envelope: null, lockedTracks: useUiStore.getState().lockedTrackIds } } };
+  }),
+
+  changeGain: (clipId, volume) => {
+    try {
+      set(state => {
+        if (state.selectedClipId !== clipId) throw new Error("Select this clip before changing its gain.");
+        const op: Op = { type: "setVolume", clipId, volume };
+        assertUnlocked(state.timeline, op, useUiStore.getState().lockedTrackIds);
+        const timeline = applyOp(state.timeline, op);
+        if (state.timeline.clips[clipId]?.volume === volume) return state;
+        const history = record(state.history, op, state.authorId);
+        const envelope = history.log.at(-1);
+        const session = state.gainSuggestions;
+        const gesture = session.gesture;
+        return { timeline, history, gainSuggestions: { ...session,
+          gesture: gesture !== null && gesture.clip.id === clipId && envelope !== undefined ? { ...gesture, envelope } : null } };
+      });
+    } catch (error) {
+      get().cancelGainGesture(clipId);
+      throw error;
+    }
+  },
+
+  finishGainGesture: (clipId) => set(state => {
+    const session = state.gainSuggestions, gesture = session.gesture;
+    if (gesture === null || gesture.clip.id !== clipId) return state;
+    const clip = audioClip(state.timeline, clipId);
+    const valid = gesture.envelope !== null && state.history.log[state.history.cursor - 1] === gesture.envelope
+      && clip !== undefined && clip.volume !== gesture.clip.volume && clip.assetId === gesture.clip.assetId
+      && clip.trackId === gesture.clip.trackId && state.selectedClipId === clipId && !state.isPlaying && !session.blocked
+      && gesture.lockedTracks === useUiStore.getState().lockedTrackIds
+      && !useUiStore.getState().lockedTrackIds.includes(clip.trackId);
+    if (!valid || clip === undefined || gesture.envelope === null) return { gainSuggestions: { ...session, gesture: null } };
+    const id = session.nextDecision + 1;
+    return { gainSuggestions: { ...session, gesture: null, nextDecision: id,
+      decisions: [...session.decisions, { id, clip, envelope: gesture.envelope }].slice(-32) } };
+  }),
+
+  cancelGainGesture: (clipId) => set(state => state.gainSuggestions.gesture?.clip.id !== clipId ? state
+    : { gainSuggestions: { ...state.gainSuggestions, epoch: state.gainSuggestions.epoch + 1, gesture: null } }),
+
+  previewGainSuggestion: (key) => {
+    const state = get(), offer = gainOffer(state, useUiStore.getState().lockedTrackIds);
+    if (offer === null || offer.key !== key) throw new Error("This suggestion is no longer current.");
+    const proposal = previewPlan(state.timeline, { summary: "Match recent gain", ops: [{ type: "setVolume", clipId: offer.clipId, volume: offer.volume }] }, useUiStore.getState().lockedTrackIds);
+    set({ gainSuggestions: gainFeedback(state.gainSuggestions, "previewed", offer) });
+    return { proposal, history: state.history, epoch: state.gainSuggestions.epoch, offerKey: key, lockedTracks: useUiStore.getState().lockedTrackIds };
+  },
+
+  applyGainSuggestion: (preview) => set(state => {
+    const offer = gainOffer(state, useUiStore.getState().lockedTrackIds);
+    if (offer === null || offer.key !== preview.offerKey || state.gainSuggestions.epoch !== preview.epoch
+      || state.timeline !== preview.proposal.before || state.history !== preview.history || preview.lockedTracks !== useUiStore.getState().lockedTrackIds) {
+      throw new Error("This suggestion changed. Preview it again before applying.");
+    }
+    // Rebuild the single supported operation from current evidence, never from the review payload.
+    const edits = applyProposalEdits(state, preview.proposal.before, [{ type: "setVolume", clipId: offer.clipId, volume: offer.volume }]);
+    const envelope = edits.history.log.at(-1);
+    if (envelope === undefined) throw new Error("Could not record the gain suggestion.");
+    const session = gainFeedback(suppressGainOffer(state.gainSuggestions, offer), "applied", offer);
+    return { ...edits, gainSuggestions: { ...session, application: { offer, envelope } } };
+  }),
+
+  dismissGainSuggestion: (key) => set(state => {
+    const offer = gainOffer(state, useUiStore.getState().lockedTrackIds);
+    return offer === null || offer.key !== key ? state
+      : { gainSuggestions: gainFeedback(suppressGainOffer(state.gainSuggestions, offer), "dismissed", offer) };
+  }),
+
+  noteGainSuggestion: (key) => set(state => {
+    const offer = gainOffer(state, useUiStore.getState().lockedTrackIds);
+    return offer === null || offer.key !== key ? state : { gainSuggestions: gainFeedback(state.gainSuggestions, "shown", offer) };
+  }),
+
+  setGainSuggestionsEnabled: (enabled) => set(state => ({ gainSuggestions: { ...replacedGainContext(state.gainSuggestions), enabled } })),
+
+  invalidateGainContext: ({ replace, blocked }) => set(state => ({ gainSuggestions: {
+    ...(replace ? replacedGainContext(state.gainSuggestions) : { ...state.gainSuggestions, epoch: state.gainSuggestions.epoch + 1, gesture: null }), blocked,
+  } })),
 
   dispatch: (op) =>
     set((state) => {
-      const id = "clipId" in op ? op.clipId : op.type === "addClip" ? op.clip.id : undefined;
-      const sourceTrack = id === undefined ? undefined : state.timeline.clips[id]?.trackId;
-      const destinationTrack = op.type === "addClip" ? op.clip.trackId : (op.type === "moveClip" || op.type === "detachAudio") ? op.trackId : undefined;
-      const locked = useUiStore.getState().lockedTrackIds;
-      if ((sourceTrack !== undefined && locked.includes(sourceTrack)) || (destinationTrack !== undefined && locked.includes(destinationTrack))) {
-        throw new Error("This track is locked. Unlock it before editing.");
-      }
+      assertUnlocked(state.timeline, op, useUiStore.getState().lockedTrackIds);
       const timeline = applyOp(state.timeline, op);
       if (timeline === state.timeline) return state;
       const history = record(state.history, op, state.authorId);
-      return { history, timeline };
+      return { history, timeline, gainSuggestions: { ...state.gainSuggestions, gesture: null } };
     }),
 
   applyProposal: (before, ops) =>
     set((state) => {
-      if (state.timeline !== before) throw new Error("The timeline changed. Generate a new proposal before applying.");
-      const proposal = previewPlan(before, { summary: "Apply proposal", ops: [...ops] }, useUiStore.getState().lockedTrackIds);
-      let history = state.history;
-      for (const op of ops) history = record(history, op, state.authorId);
-      return { history, timeline: proposal.after };
+      return { ...applyProposalEdits(state, before, ops), gainSuggestions: { ...state.gainSuggestions, gesture: null } };
     }),
 
   undo: () =>
-    set((state) =>
-      canUndo(state.history)
-        ? { ...derive(historyUndo(state.history)) }
-        : state,
-    ),
+    set((state) => {
+      if (!canUndo(state.history)) return state;
+      const session = state.gainSuggestions, application = session.application;
+      const gainSuggestions = application !== null && state.history.log[state.history.cursor - 1] === application.envelope
+        ? gainFeedback(session, "undone", application.offer) : session;
+      return { ...derive(historyUndo(state.history)), gainSuggestions: { ...gainSuggestions, gesture: null } };
+    }),
 
   redo: () =>
     set((state) =>
       canRedo(state.history)
-        ? { ...derive(historyRedo(state.history)) }
+        ? { ...derive(historyRedo(state.history)), gainSuggestions: { ...state.gainSuggestions, gesture: null } }
         : state,
     ),
 
-  selectClip: (id) => set({ selectedClipId: id }),
+  selectClip: (id) => set(state => state.selectedClipId === id ? state : { selectedClipId: id, selectionRevision: state.selectionRevision + 1,
+    gainSuggestions: { ...state.gainSuggestions, epoch: state.gainSuggestions.epoch + 1, gesture: null } }),
   setPlayhead: (ms) => set({ playheadMs: Math.max(0, ms) }),
-  play: () => set({ isPlaying: true }),
+  play: () => set(state => ({ isPlaying: true, gainSuggestions: { ...state.gainSuggestions, epoch: state.gainSuggestions.epoch + 1, gesture: null } })),
   pause: () => set({ isPlaying: false }),
   setZoom: (pxPerSecond) =>
     set({ pxPerSecond: Math.min(400, Math.max(5, pxPerSecond)) }),
@@ -127,6 +244,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       playheadMs: 0,
       isPlaying: false,
       authorId: state.authorId,
+      gainSuggestions: replacedGainContext(state.gainSuggestions),
     })),
 
   // Source registration is durable across clip undo; metadata edits use Ops.
@@ -144,6 +262,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       playheadMs: 0,
       isPlaying: false,
       authorId: state.authorId,
+      gainSuggestions: replacedGainContext(state.gainSuggestions),
     })),
 }));
 

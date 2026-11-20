@@ -39,9 +39,11 @@ describe("studio chrome", () => {
   it("identifies the project and keeps import and export available", () => {
     const html = renderToStaticMarkup(<TopBar />);
     expect(html).toContain("Untitled project");
-    expect(html).toContain("Add video");
+    expect(html).toContain("Add media");
+    expect(html).toContain('aria-controls="assistant-sidebar"');
+    expect(html.indexOf('id="open-assistant"')).toBeGreaterThan(html.indexOf("Export"));
     expect(html).toContain("Export");
-    expect(html).toContain("VIDEO PROJECT");
+    expect(html).toContain('aria-label="Project menu"');
   });
 
   it("uses the actual project name after loading a project", () => {
@@ -49,11 +51,13 @@ describe("studio chrome", () => {
     expect(renderToStaticMarkup(<TopBar />)).toContain("Documentary cut");
   });
 
-  it("labels all library tabs and marks the active one", () => {
+  it("lists the project destinations with no panel selected initially", () => {
     const html = renderToStaticMarkup(<ActivityBar />);
-    for (const label of ["Media", "Versions", "Issues", "Assistant"]) expect(html).toContain(`aria-label="${label}"`);
-    expect(html).toContain('aria-current="page"');
+    for (const label of ["Media", "Versions", "Issues", "Properties", "Settings"]) expect(html).toContain(`aria-label="${label}"`);
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(5);
+    expect(html.match(/aria-controls="properties-sidebar"/g)).toHaveLength(5);
     expect(html).toContain(">Media</span>");
+    expect(html).not.toContain('id="open-assistant"');
   });
 
   it("renders cached footage in timeline strips without creating a decoder", () => {
@@ -65,4 +69,10 @@ describe("studio chrome", () => {
     expect(html).not.toContain("<video");
     expect(html).toContain('aria-label="clip clip-a"');
   });
+});
+
+it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])("renders offline clips with absent own asset %s without crashing", assetId => {
+  const clip = makeClip({id: "offline", assetId, trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1});
+  useEditorStore.getState().loadTimeline({...emptyTimeline("Offline"), clips: {offline: clip}});
+  expect(() => renderToStaticMarkup(<ClipBlock clip={clip} scale={createTimeScale(50)} assetDurationMs={undefined} diagnostics={[]} author={undefined} />)).not.toThrow();
 });

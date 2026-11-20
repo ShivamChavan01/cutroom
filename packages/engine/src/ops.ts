@@ -1,4 +1,5 @@
 import {
+  assetById,
   type Asset,
   type Clip,
   type Millis,
@@ -135,7 +136,7 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
 
     case "detachAudio": {
       const source = mustClip(timeline, op.clipId);
-      if (timeline.assets[source.assetId]?.kind !== "video" ||
+      if (assetById(timeline, source.assetId)?.kind !== "video" ||
           timeline.tracks.find((track) => track.id === source.trackId)?.kind !== "video") {
         throw new Error("Detach audio requires a video clip on a video track.");
       }
@@ -240,7 +241,7 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
       if (duration <= 0) {
         throw new Error(`applyOp: trim would make clip ${clip.id} zero-length`);
       }
-      const asset = timeline.assets[clip.assetId];
+      const asset = assetById(timeline, clip.assetId);
       if (asset !== undefined && inPoint + duration > asset.duration) {
         throw new Error(
           `applyOp: trim exceeds asset ${clip.assetId} duration ${asset.duration}`,
@@ -313,7 +314,7 @@ export function applyOp(timeline: Timeline, op: Op): Timeline {
     }
 
     case "setAssetTags": {
-      const asset = timeline.assets[op.assetId];
+      const asset = assetById(timeline, op.assetId);
       if (asset === undefined) throw new Error(`applyOp: unknown asset ${op.assetId}`);
       if (!Array.isArray(op.tags) || op.tags.length > 12 || op.tags.some(tag => typeof tag !== "string" || tag.trim() !== tag || tag.length === 0 || tag.length > 40) || new Set(op.tags.map(tag => tag.toLowerCase())).size !== op.tags.length) {
         throw new Error("Use at most 12 distinct tags, each 1 to 40 characters.");

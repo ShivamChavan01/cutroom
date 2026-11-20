@@ -19,7 +19,7 @@ describe("guided sample uses real VCS state", () => {
   beforeEach(() => installDemoProject());
   it("begins with an optional guide and opens the sample in a separate tab", () => {
     expect(renderToStaticMarkup(<DemoGuide />)).toContain("Explore different edits without losing your work");
-    expect(renderToStaticMarkup(<DemoGuide />)).toContain("Skip guide");
+    expect(renderToStaticMarkup(<DemoGuide />)).toContain('popover="auto"');
     expect(renderToStaticMarkup(<TopBar />)).toContain('href="?demo=1" target="_blank" rel="noopener noreferrer"');
   });
   it("shows a genuine conflict, then engine-confirmed resolution, then verification", () => {

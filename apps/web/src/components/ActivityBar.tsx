@@ -1,64 +1,38 @@
-import { AlertTriangle, Film, GitBranch, MessageSquare, Settings } from "lucide-react";
-import { ExportMenu } from "./ExportMenu";
+import { useMemo } from "react";
+import { AlertTriangle, Film, GitBranch, Settings, SlidersHorizontal } from "lucide-react";
 import { lint } from "@cutroom/engine";
 import { useEditorStore } from "../store";
 import { type RailItem, useUiStore } from "../uiStore";
-import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "./ui/sidebar";
 
-const ITEMS: { id: RailItem; label: string; icon: typeof Film }[] = [
+const ITEMS: { id: RailItem | "inspector"; label: string; icon: typeof Film }[] = [
   { id: "media", label: "Media", icon: Film },
   { id: "versions", label: "Versions", icon: GitBranch },
   { id: "issues", label: "Issues", icon: AlertTriangle },
-  { id: "assistant", label: "Assistant", icon: MessageSquare },
+  { id: "inspector", label: "Properties", icon: SlidersHorizontal },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
-/**
- * Fixed shadcn sidebar menu for switching the editor's workspace panels.
- */
 export function ActivityBar() {
-  const rail = useUiStore((state) => state.rail);
-  const setRail = useUiStore((state) => state.setRail);
-  const timeline = useEditorStore((state) => state.timeline);
-  const issueCount = lint(timeline).length;
+  const active = useUiStore(state => state.propertiesTab ?? state.rail);
+  const timeline = useEditorStore(state => state.timeline);
+  const issueCount = useMemo(() => lint(timeline).length, [timeline]);
 
   return (
-    <nav
-      aria-label="activity bar"
-      className="studio-library-tabs"
-    >
-      <div className="sidebar-group-label">Workspace</div>
-      <SidebarMenu>
-      {ITEMS.map((item) => {
-        const Icon = item.icon;
-        const active = rail === item.id;
-        return (
-          <SidebarMenuItem key={item.id}>
-          <SidebarMenuButton
-            onClick={() => setRail(item.id)}
-            isActive={active}
-            title={item.label}
-            aria-label={item.label}
-          >
-            <Icon className="size-4.5" aria-hidden />
-            <span>{item.label}</span>
-            {item.id === "issues" && issueCount > 0 && (
-              <span
-                className="sidebar-menu-badge"
-                aria-label={`${issueCount} issues`}
-              >
-                {issueCount}
-              </span>
-            )}
-          </SidebarMenuButton>
-          </SidebarMenuItem>
-        );
-      })}
-      </SidebarMenu>
-      <div className="sidebar-separator" />
-      <div className="navigation-export"><ExportMenu sidebar /></div>
-      <SidebarMenu className="sidebar-footer">
-        <SidebarMenuItem><SidebarMenuButton isActive={rail === "settings"} onClick={() => setRail("settings")} aria-label="Settings" title="Settings"><Settings aria-hidden /><span>Settings</span></SidebarMenuButton></SidebarMenuItem>
-      </SidebarMenu>
+    <nav aria-label="Project tools" className="workspace-rail">
+      {ITEMS.map(({ id, label, icon: Icon }) => (
+        <button key={id} type="button" id={`open-${id}`} aria-expanded={active === id}
+          aria-controls="properties-sidebar" aria-label={label} title={label}
+          aria-description={id === "issues" && issueCount > 0 ? `${issueCount} open` : undefined}
+          onClick={() => {
+            const ui = useUiStore.getState();
+            if (id === "inspector") ui.setPropertiesTab(active === id ? null : id);
+            else ui.setRail(active === id ? null : id);
+          }}>
+          <Icon aria-hidden="true" size={18} />
+          <span>{label}</span>
+          {id === "issues" && issueCount > 0 && <small aria-hidden="true">{issueCount}</small>}
+        </button>
+      ))}
     </nav>
   );
 }

@@ -102,6 +102,7 @@ try {
   const before = await fixture("ambiguous");
   let alert;
   page.once("dialog", async (dialog) => { alert = dialog.message(); await dialog.accept(); });
+  if (!await page.getByLabel("Merge source", { exact: true }).isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
   await page.getByLabel("Merge source", { exact: true }).selectOption("other");
   await page.getByRole("button", { name: "Merge", exact: true }).click();
   assert.match(alert, /multiple|ambiguous|criss.cross/i);

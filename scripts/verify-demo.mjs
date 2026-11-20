@@ -1,3 +1,4 @@
+import { openProjectMenu, openProjectTool, openSampleGuide } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -28,7 +29,7 @@ async function state(page) {
   });
 }
 async function ready(page, started = performance.now()) {
-  await page.waitForSelector(".demo-guide");
+  await page.waitForSelector(".demo-guide", {state: "attached"});
   const demoInitializedMs = performance.now() - started;
   await until(page, () => [...document.querySelectorAll("[data-player-track] video")].some((v) => v.readyState >= 2 && v.videoWidth === 960 && !v.error));
   return {demoInitializedMs, playbackReadyMs: performance.now() - started};
@@ -52,9 +53,9 @@ try {
     const pageReadyMs = performance.now() - start;
     assert.equal(mediaRequests.length, 0, "Personal startup must not request demo media");
     assert.match(await personal.locator("footer").innerText(), /nothing to verify/);
-    await personal.getByRole("button", {name: "Issues", exact: true}).click();
+    await openProjectTool(personal, "Issues");
     assert.match(await personal.locator('[aria-label="diagnostics"]').first().innerText(), /No clips to verify/);
-    await personal.getByRole("button", {name: "Media", exact: true}).click();
+    await openProjectTool(personal, "Media");
     await capture(personal, `fresh-${width}`);
     const popup = context.waitForEvent("page");
     const demoStart = performance.now();
@@ -99,18 +100,18 @@ try {
     assert.equal(await separator.evaluate(el => document.activeElement === el), true);
     const box = await separator.boundingBox(); assert.ok(box);
     await demo.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await demo.mouse.down(); await demo.mouse.move(box.x + 20, box.y + box.height / 2, {steps: 5}); await demo.mouse.up();
-    await demo.getByRole("button", {name: "See two versions", exact: true}).click();
-    await demo.getByRole("combobox", {name: "Current branch", exact: true}).selectOption("alternate");
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "See two versions", exact: true}).click();
+    await demo.getByRole("combobox", {name: "Current cut", exact: true}).selectOption("alternate");
     assert.equal((await state(demo)).timeline.clips.ending.start, 4000);
-    await demo.getByRole("combobox", {name: "Current branch", exact: true}).selectOption("main");
+    await demo.getByRole("combobox", {name: "Current cut", exact: true}).selectOption("main");
     await demo.getByRole("tab", {name: "Graph", exact: true}).click();
     await demo.locator('[aria-label="Commit graph"]').waitFor();
     await capture(demo, `graph-${width}`);
     await demo.getByRole("tab", {name: "History", exact: true}).click();
-    await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
     assert.ok((await demo.getByRole("tab", {name: "Diff", exact: true}).getAttribute("data-state")) === "active");
     await capture(demo, `comparison-${width}`);
-    await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
     const pending = (await state(demo)).pending;
     assert.equal(pending.result.clean, false);
     assert.deepEqual(pending.result.conflicts.map(c => c.kind), ["overlap"]);
@@ -127,10 +128,10 @@ try {
     assert.deepEqual(merge.parents, ["c2", "c3"]);
     assert.equal(after.timeline.clips.ending, undefined);
     assert.equal(after.timeline.clips.middle.start, 3000, "Resolution must not silently retime the kept clip");
-    await demo.getByRole("button", {name: "Inspect findings", exact: true}).click();
-    const finding = demo.locator('[aria-label="diagnostics"]').first().getByRole("button").filter({hasText: "gap"});
-    await finding.click();
-    assert.match(await finding.innerText(), /1200ms/);
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "Inspect findings", exact: true}).click();
+    const finding = demo.locator('[aria-label="diagnostics"]').first().locator(".issue-item").filter({hasText: "1.2-second gap on V1"});
+    await finding.getByRole("button", {name: /Show on timeline/}).click();
+    assert.match(await finding.innerText(), /1.2-second gap/);
     await capture(demo, `verification-${width}`);
     await saved(demo);
     await demo.reload(); await ready(demo);
@@ -148,10 +149,10 @@ try {
     await saved(demo);
     // Reset cancellation preserves the merged project; accepted reset affects only demo.
     demo.once("dialog", dialog => dialog.dismiss());
-    await demo.getByRole("button", {name: "Reset sample", exact: true}).click();
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "Reset sample", exact: true}).click();
     assert.deepEqual((await state(demo)).repo, after.repo);
     demo.once("dialog", dialog => dialog.accept());
-    await demo.getByRole("button", {name: "Reset sample", exact: true}).click();
+    await openSampleGuide(demo); await demo.getByRole("button", {name: "Reset sample", exact: true}).click();
     await until(demo, async () => Object.keys((await import("/src/vcsStore.ts")).useVcsStore.getState().repo.commits).length === 4);
     await saved(demo);
     assert.deepEqual((await state(personal)).timeline, personalBefore.timeline);
@@ -159,16 +160,16 @@ try {
     assert.equal(await demo.evaluate(async id => (await import("/src/lib/media/opfs.ts")).deleteMedia(id), personalAssetId), true);
     // Explicit personal link restores the saved personal project in a third tab.
     const personalPopup = context.waitForEvent("page");
-    await demo.getByRole("link", {name: "Personal workspace ↗", exact: true}).click();
+    await openProjectMenu(demo); await demo.getByRole("link", {name: "Personal workspace ↗", exact: true}).click();
     const returned = await personalPopup;
     await until(returned, async () => (await import("/src/lib/persistence/persistenceStore.ts")).usePersistenceStore.getState().hydrated);
     assert.deepEqual((await state(returned)).timeline, personalBefore.timeline);
     await until(returned, () => [...document.querySelectorAll("[data-player-track] video")].some(v => v.readyState >= 2 && v.videoWidth > 0));
     await returned.close();
     if (width === 1440) {
-      await demo.getByRole("button", {name: "See two versions", exact: true}).click();
-      await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
-      await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "See two versions", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
       await demo.getByText("This merge is pending.", {exact: false}).waitFor();
       await saved(demo);
       await demo.reload(); await ready(demo);
@@ -176,8 +177,8 @@ try {
       await demo.getByRole("button", {name: "Cancel", exact: true}).click();
       assert.equal(Object.keys((await state(demo)).repo.commits).length, 4);
       // Skipping the guide leaves the editor usable and can be reversed.
-      await demo.getByRole("button", {name: "Skip guide", exact: true}).click();
-      await demo.getByRole("button", {name: "Show walkthrough", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Close guide", exact: true}).click();
+      await openSampleGuide(demo);
     }
     results.push({width, height, pageReadyMs, ...demoTimings, mediaResources, decodedFrames, seekMeasurements, passed: true});
     await context.close();
@@ -228,7 +229,7 @@ try {
   }
   for (const mode of ["unconfigured", "error"]) {
     configMode = mode;
-    await ai.getByRole("button", {name: "Media", exact: true}).click();
+    await ai.reload();
     await ai.getByRole("button", {name: "Assistant", exact: true}).click();
     await ai.getByText(/Assistant unavailable/).waitFor();
     assert.equal(await request.isDisabled(), true);

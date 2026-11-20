@@ -38,20 +38,18 @@ describe("editor presentation", () => {
     useUiStore.setState({ rail: "media" });
   });
 
-  it("opens the verification assistant from its workspace rail item", () => {
-    useUiStore.setState({ rail: "assistant" });
+  it("closes the media sidebar when Assistant is selected", () => {
+    useUiStore.getState().setPropertiesTab("assistant");
     const html = renderToStaticMarkup(<SidePanel />);
-    expect(html).toContain('aria-label="AI verification assistant"');
+    expect(html).not.toContain('aria-label="AI verification assistant"');
     expect(html).not.toContain("Project media");
   });
 
   it("offers an import action in an empty media library", () => {
     const html = renderToStaticMarkup(<SidePanel />);
     expect(html).toContain("Project media");
-    expect(html).toContain("Try demo project");
-    expect(html).toContain('href="?demo=1"');
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain("Your project stays untouched");
+    expect(html).toContain("Import your footage");
+    expect(html).not.toContain("Try demo project");
     expect(html).toMatch(/<button[^>]*>.*?Import your own footage<\/button>/);
     expect(html).toContain('type="file"');
   });
@@ -68,10 +66,19 @@ describe("editor presentation", () => {
     expect(html).not.toContain("Import your footage");
   });
 
+  it("shows one issue list with an Assistant shortcut", () => {
+    useUiStore.getState().setRail("issues");
+    const html = renderToStaticMarkup(<SidePanel />);
+    expect(html.match(/aria-label="diagnostics"/g)).toHaveLength(1);
+    expect(html).toContain("Explain issues with AI");
+    expect(html).not.toContain("Open issues panel");
+  });
+
   it("identifies versions and retains history and graph navigation", () => {
     useUiStore.setState({ rail: "versions" });
     const html = renderToStaticMarkup(<SidePanel />);
-    expect(html).toContain("Versions");
+    expect(html).toContain('class="version-rail"');
+    expect(html).toContain('aria-label="Timeline versions"');
     expect(html).toContain("History");
     expect(html).toContain("Graph");
     expect(html).not.toContain("Project media");

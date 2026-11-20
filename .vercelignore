@@ -11,3 +11,18 @@ apps/web/dist/
 /*.pdf
 /ChatGPT Image*.png
 /bridge/
+
+# Never publish local notes or credentials with the app.
+/CONTEXT.md
+/CARDBOARD-KB.md
+/*-REPORT.md
+/CUTROOM-ADVERSARIAL-QA.md
+/QA-FINDINGS.md
+/TEST-RESULTS.md
+/private/
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+.git/
+.vercel/

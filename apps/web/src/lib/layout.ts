@@ -21,11 +21,11 @@ export function parseLayout(raw: string | null): PanelLayout | null {
     }
     const out: Record<string, number> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
         out[key] = value;
       }
     }
-    return Object.keys(out).length > 0 ? out : null;
+    return Object.values(out).some(value => value > 0) ? out : null;
   } catch {
     return null;
   }
@@ -35,7 +35,16 @@ export function readLayout(
   storage: Pick<Storage, "getItem">,
   groupId: string,
 ): PanelLayout | null {
-  return parseLayout(storage.getItem(`${workspaceKey(LAYOUT_STORAGE_KEY)}.${groupId}`));
+  try { return parseLayout(storage.getItem(`${workspaceKey(LAYOUT_STORAGE_KEY)}.${groupId}`)); }
+  catch { return null; }
+}
+
+export function layoutForPanels(saved: PanelLayout | null, panelIds: readonly string[], fallback: PanelLayout): PanelLayout {
+  if (saved === null || Object.keys(saved).length !== panelIds.length) return fallback;
+  const values = panelIds.map(id => saved[id]);
+  if (values.some(value => value === undefined || value < 0 || value > 100)) return fallback;
+  const total = values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  return Math.abs(total - 100) < 0.1 ? saved : fallback;
 }
 
 export function writeLayout(

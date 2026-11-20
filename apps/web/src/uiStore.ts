@@ -6,14 +6,17 @@ import { create } from "zustand";
  * is chrome, not timeline state, and it must never enter the op log.
  */
 
-export type RailItem = "media" | "versions" | "issues" | "assistant" | "settings";
-export type EditorTab = "timeline" | "diff" | "merge" | "verification";
-export type BottomTab = "issues" | "activity";
+export type RailItem = "media" | "versions" | "issues" | "settings";
+export type EditorTab = "timeline" | "diff" | "merge";
+export type PropertiesTab = "inspector" | "assistant";
 
 interface UiStore {
-  readonly rail: RailItem;
+  readonly scrubbing: boolean;
+  readonly setScrubbing: (scrubbing: boolean) => void;
+  readonly propertiesTab: PropertiesTab | null;
+  readonly setPropertiesTab: (tab: PropertiesTab | null) => void;
+  readonly rail: RailItem | null;
   readonly editorTab: EditorTab;
-  readonly bottomTab: BottomTab;
   readonly reviewOpen: boolean;
   readonly inspectorTab: "clip" | "sequence" | "project";
   readonly setInspectorTab: (tab: "clip" | "sequence" | "project") => void;
@@ -23,16 +26,18 @@ interface UiStore {
   readonly toggleTrackHidden: (id: string) => void;
   readonly toggleTrackMuted: (id: string) => void;
   readonly toggleTrackLocked: (id: string) => void;
-  readonly setRail: (rail: RailItem) => void;
+  readonly setRail: (rail: RailItem | null) => void;
   readonly openTab: (tab: EditorTab) => void;
-  readonly setBottomTab: (tab: BottomTab) => void;
   readonly setReviewOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiStore>()((set) => ({
-  rail: "media",
+  scrubbing: false,
+  setScrubbing: (scrubbing) => set({ scrubbing }),
+  propertiesTab: null,
+  setPropertiesTab: (propertiesTab) => set({ propertiesTab, rail: null }),
+  rail: null,
   editorTab: "timeline",
-  bottomTab: "issues",
   reviewOpen: false,
   inspectorTab: "clip",
   setInspectorTab: (inspectorTab) => set({ inspectorTab }),
@@ -42,9 +47,8 @@ export const useUiStore = create<UiStore>()((set) => ({
   toggleTrackHidden: (id) => set((state) => ({ hiddenTrackIds: toggleId(state.hiddenTrackIds, id) })),
   toggleTrackMuted: (id) => set((state) => ({ mutedTrackIds: toggleId(state.mutedTrackIds, id) })),
   toggleTrackLocked: (id) => set((state) => ({ lockedTrackIds: toggleId(state.lockedTrackIds, id) })),
-  setRail: (rail) => set({ rail }),
+  setRail: (rail) => set(rail === "issues" ? { rail, propertiesTab: null, editorTab: "timeline" } : { rail, propertiesTab: null }),
   openTab: (editorTab) => set({ editorTab }),
-  setBottomTab: (bottomTab) => set({ bottomTab, reviewOpen: true }),
   setReviewOpen: (reviewOpen) => set({ reviewOpen }),
 }));
 

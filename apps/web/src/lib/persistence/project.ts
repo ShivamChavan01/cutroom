@@ -13,6 +13,7 @@ import {
   TRANSFORM_FIELDS,
 } from "@cutroom/engine";
 import { findMergeBases, type Commit, type Repo } from "../vcs";
+import { parseProductionDocument, type ProductionDocument } from "../production/document";
 
 /**
  * Project persistence: the pure half.
@@ -44,6 +45,7 @@ export interface RestoredProject {
   readonly repo: PersistedRepo;
   readonly pending: PendingMerge | null;
   readonly mergeRecovery: string | null;
+  readonly production: ProductionDocument | null;
 }
 
 /** A recoverable problem with stored data. Carries the raw text so the
@@ -61,13 +63,15 @@ export function serializeProject(input: {
   readonly history: History;
   readonly repo: Repo;
   readonly pending?: PendingMerge | null;
+  readonly production?: ProductionDocument | null;
 }): string {
   const pending = input.pending;
   const project = {
     pending: pending == null ? null : {targetBranch: pending.targetBranch, sourceBranch: pending.sourceBranch,
       baseId: pending.baseId, oursId: pending.oursId, theirsId: pending.theirsId,
       workingTimeline: pending.workingTimeline, resolutions: pending.resolutions},
-    version: PROJECT_SCHEMA_VERSION,
+    version: input.production == null ? PROJECT_SCHEMA_VERSION : 3,
+    ...(input.production == null ? {} : { production: input.production }),
     history: {
       base: input.history.base,
       log: input.history.log,
@@ -158,12 +162,18 @@ export function deserializeProject(raw: string): RestoredProject {
   if (!isRecord(parsed)) {
     throw new ProjectLoadError("stored project is not an object", raw);
   }
-  if (parsed.version !== 1 && parsed.version !== PROJECT_SCHEMA_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== PROJECT_SCHEMA_VERSION && parsed.version !== 3) {
     throw new ProjectLoadError(
       `stored project has version ${String(parsed.version)}, ` +
-        `this build reads 1 and ${PROJECT_SCHEMA_VERSION}`,
+        `this build reads 1, ${PROJECT_SCHEMA_VERSION} and 3`,
       raw,
     );
+  }
+  let production: ProductionDocument | null = null;
+  if (parsed.production !== undefined && parsed.production !== null) {
+    if (parsed.version !== 3) throw new ProjectLoadError("Production context requires project schema 3.", raw);
+    try { production = parseProductionDocument(parsed.production); }
+    catch (cause) { throw new ProjectLoadError(cause instanceof Error ? cause.message : "Invalid production context.", raw); }
   }
   const history = parsed.history;
   if (!isRecord(history) || !isTimeline(history.base) || !Array.isArray(history.log)) {
@@ -250,7 +260,8 @@ export function deserializeProject(raw: string): RestoredProject {
   const recovered = recoverMerge(parsed.pending, restoredRepo, activeTimeline);
   return {
     ...recovered,
-    version: PROJECT_SCHEMA_VERSION,
+    version: parsed.version === 3 ? 3 : PROJECT_SCHEMA_VERSION,
+    production,
     history: {
       base: history.base,
       log: envelopes,

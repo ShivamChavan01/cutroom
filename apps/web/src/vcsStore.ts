@@ -165,9 +165,20 @@ export const useVcsStore = create<VcsStore>()((set, get) => ({
   },
 }));
 
+// A fork changes editing scope without replacing editor history. Invalidate synchronously for every caller.
+useVcsStore.subscribe((state, previous) => {
+  const repo = state.repo, oldRepo = previous.repo;
+  const tip = (value: Repo | null) => value === null ? null : value.detachedAt ?? value.branches[value.currentBranch];
+  const restoredGraph = repo?.commits !== oldRepo?.commits && tip(repo) === tip(oldRepo);
+  const replace = restoredGraph || (repo === null) !== (oldRepo === null) || repo?.currentBranch !== oldRepo?.currentBranch || repo?.detachedAt !== oldRepo?.detachedAt;
+  if (replace || tip(repo) !== tip(oldRepo) || state.pending !== previous.pending) {
+    useEditorStore.getState().invalidateGainContext({ replace, blocked: state.pending !== null });
+  }
+});
+
 function requireCleanWorkingTree(repo: Repo): void {
   if (!isUnchanged(currentCommit(repo).timeline, useEditorStore.getState().timeline)) {
-    throw new Error("You have uncommitted changes. Commit them or create a new version before checkout.");
+    throw new Error("Save a version or create another cut to keep your edits before switching.");
   }
 }
 

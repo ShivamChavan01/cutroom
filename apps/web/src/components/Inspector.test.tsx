@@ -62,13 +62,34 @@ describe("clip inspector", () => {
     expect(html).toContain("clip-1");
     expect(html).toContain('aria-label="Clip timing"');
     expect(html).toContain('aria-label="Clip audio"');
-    expect(html).toContain('aria-label="Source media"');
+    expect(html).toMatch(/<details[^>]*aria-label="Source media"[^>]*><summary>Source details/);
+    expect(html).toMatch(/<details[^>]*aria-label="Clip transform"[^>]*><summary>Transform/);
     expect(html).toContain("0:01.00");
     expect(html).toContain("0:03.00");
     expect(html).toContain("0:00.50");
     expect(html).toContain("0:03.50");
     expect(html).toContain("75%");
     expect(html).toContain(useEditorStore.getState().authorId);
+  });
+
+  it("puts volume before timing for a soundtrack and omits picture controls", () => {
+    installDemoProject();
+    useEditorStore.getState().selectClip("score");
+    const html = renderToStaticMarkup(<Inspector />);
+    expect(html).toContain('aria-label="Clip volume"');
+    expect(html.indexOf('aria-label="Clip volume"')).toBeLessThan(html.indexOf('aria-label="Clip timing"'));
+    expect(html).not.toContain('aria-label="Clip transform"');
+  });
+
+  it("shows sound controls and audio destinations for audio detached from a video", () => {
+    seedClip();
+    const editor = useEditorStore.getState();
+    editor.dispatch({ type: "detachAudio", clipId: "clip-1", trackId: "a1" });
+    editor.selectClip("audio:clip-1");
+    const html = renderToStaticMarkup(<Inspector />);
+    expect(html).toContain('aria-label="Clip volume"');
+    expect(html).toMatch(/<option value="a1" selected/);
+    expect(html).not.toContain('aria-label="Clip transform"');
   });
 
   it("keeps selected split authorship correct through undo, redo and checkout", () => {
@@ -111,7 +132,7 @@ describe("clip inspector", () => {
     expect(renderToStaticMarkup(<Inspector />)).toContain("No clip selected");
   });
 
-  it("keeps diagnostics for the selected clip visible", () => {
+  it("links selected clip findings to the issues list", () => {
     seedClip();
     useEditorStore.getState().dispatch({
       type: "addClip",
@@ -122,7 +143,8 @@ describe("clip inspector", () => {
     });
     const html = renderToStaticMarkup(<Inspector />);
     expect(html).toContain('aria-label="Clip issues"');
-    expect(html).toContain("overlap");
+    expect(html).toContain("View issues (");
+    expect(html).not.toContain("overlap");
   });
 
   it("keeps committed clip attribution after checkout, fast-forward and restoration", () => {
@@ -139,4 +161,14 @@ describe("clip inspector", () => {
     editor.restoreHistory(restored.history); vcs.restoreRepo(restored.repo); editor.selectClip("opening");
     expect(renderToStaticMarkup(<Inspector />)).toContain("Feature editor");
   });
+});
+
+it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])("shows an offline clip with absent own media %s", assetId => {
+  const clip = makeClip({id: "offline", assetId, trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1});
+  useEditorStore.getState().loadTimeline({...emptyTimeline("Offline"), clips: {offline: clip}});
+  useEditorStore.getState().selectClip("offline");
+  const html = renderToStaticMarkup(<Inspector />);
+  expect(html).toContain("offline");
+  expect(html).toContain("Clip properties");
+  expect(html).not.toContain("[native code]");
 });

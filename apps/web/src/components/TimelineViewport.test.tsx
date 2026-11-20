@@ -146,6 +146,26 @@ describe("timeline viewport rendering", () => {
     expect(released).not.toContain("Keep ours");
   });
 
+  it("fills the initial viewport for a short timeline", () => {
+    expect(renderToStaticMarkup(<Timeline />)).toContain("position:relative;width:1200px");
+  });
+
+  it("enables history controls only when the edit can be undone or redone", () => {
+    const controls = () => {
+      const html = renderToStaticMarkup(<Timeline />);
+      return ["Undo", "Redo"].map(label => {
+        const button = html.match(new RegExp('<button[^>]*aria-label="' + label + '"[^>]*>'));
+        expect(button).not.toBeNull();
+        return !button![0].includes('disabled=""');
+      });
+    };
+    expect(controls()).toEqual([false, false]);
+    useEditorStore.getState().dispatch({ type: "addTrack", track: { id: "v2", name: "V2", kind: "video", muted: false } });
+    expect(controls()).toEqual([true, false]);
+    useEditorStore.getState().undo();
+    expect(controls()).toEqual([false, true]);
+  });
+
   it("enables detach only for an eligible video selection", () => {
     const base = putAsset(emptyTimeline(), { id: "a", kind: "video", duration: 30000 });
     const timeline = applyOp(base, { type: "addClip", clip: clip("c1", 0) });

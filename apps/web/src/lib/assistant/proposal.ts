@@ -1,4 +1,6 @@
 import { applyOp, diffTimelines, lint, lintDelta, type Op, type Timeline } from "@cutroom/engine";
+import type { ProductionDocument } from "../production/document";
+import { assertProductionPreserved, reviewProduction } from "../production/review";
 
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Expected an object in the AI response.");
@@ -72,14 +74,20 @@ export function assertUnlocked(timeline: Timeline, op: Op, lockedTrackIds: reado
   }
 }
 
-export function previewPlan(before: Timeline, plan: ReturnType<typeof parsePlan>, lockedTrackIds: readonly string[]) {
+export function previewPlan(before: Timeline, plan: ReturnType<typeof parsePlan>, lockedTrackIds: readonly string[], document: ProductionDocument | null = null) {
   let after = before;
   for (const op of plan.ops) {
     if ("clipId" in op && !Object.hasOwn(after.clips, op.clipId)) throw new Error("The AI referenced a clip that does not exist.");
     assertUnlocked(after, op, lockedTrackIds);
     after = applyOp(after, op);
   }
-  return { ...plan, before, after, diff: diffTimelines(before, after), verification: lintDelta(before, after) };
+  let regression: string | null = null;
+  if (document !== null) {
+    try { assertProductionPreserved(before, after, document); }
+    catch (cause) { regression = cause instanceof Error ? cause.message : "Could not validate the production requirements."; }
+  }
+  return { ...plan, before, after, diff: diffTimelines(before, after), verification: lintDelta(before, after),
+    production: document === null ? null : { before: reviewProduction(before, document), after: reviewProduction(after, document), regression } };
 }
 
 export function assistantContext(timeline: Timeline, selectedClipId: string | null, playheadMs: number, lockedTrackIds: readonly string[]) {

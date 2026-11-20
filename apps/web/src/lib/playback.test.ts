@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyOp, clipsOnTrack, emptyTimeline, makeClip, type Timeline } from "@cutroom/engine";
-import { advancePlayback, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "./playback";
+import { advancePlayback, isLargeScrubJump, clipTransform, nextClip, playbackGain, resolveActiveClip, resolvePlaybackLayers } from "./playback";
 
 const a = makeClip({
   id: "a",
@@ -171,4 +171,21 @@ it("resolves detached audio at the same source time with only one audible layer"
   expect(layers.map((layer) => layer.sourceTimeMs)).toEqual([3000, 3000]);
   expect(layers.map((layer) => playbackGain(layer.clip, layer.track))).toEqual([0, 0.6]);
   expect(layers.map((layer) => playbackGain(layer.clip, layer.track, ["a1"]))).toEqual([0, 0]);
+});
+
+it("recognizes discontinuous scrub moves in either direction after a drag starts", () => {
+  expect(isLargeScrubJump(null, 60_000)).toBe(false);
+  expect(isLargeScrubJump(0, 9_999)).toBe(false);
+  expect(isLargeScrubJump(0, 10_000)).toBe(true);
+  expect(isLargeScrubJump(60_000, 50_000)).toBe(true);
+});
+
+it("paces a lone video by its decoded media clock across stalls and recovery", () => {
+  const tick = { at: 1500, previousFrame: 100, frame: 500, duration: 5000 };
+  for (const lead of [-20, 0, 75, 800]) {
+    const step = advancePlayback({ ...tick, mediaLeadMs: lead });
+    expect(step.time).toBe(tick.at + Math.max(0, lead));
+  }
+  expect(advancePlayback({ ...tick, buffering: true, mediaLeadMs: 50 }).time).toBe(1500);
+  expect(advancePlayback({ ...tick, at: 4950, mediaLeadMs: 75 })).toEqual({time: 5000, ended: true});
 });

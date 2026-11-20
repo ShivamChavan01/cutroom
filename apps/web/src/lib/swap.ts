@@ -63,6 +63,8 @@ export interface SwapSnapshot {
   readonly loadedAsset: Readonly<Record<Side, string | null>>;
   /** Warm slot plus whether its element reports readyState >= 4. */
   readonly warm: (WarmSlot & { readonly elementReady: boolean }) | null;
+  /** The live URL differs and the caller can preserve it by using the other slot. */
+  readonly useParkedSlot?: boolean;
 }
 
 export type SwapDecision =
@@ -106,6 +108,7 @@ export function decideSwap(
   snap: SwapSnapshot,
 ): SwapDecision {
   if (activeAssetId === null) return { kind: "nothing" };
+  if (snap.useParkedSlot) return { kind: "flip", to: otherSide(snap.liveSide) };
   if (sameAsset(snap.loadedAsset[snap.liveSide], activeAssetId)) {
     return { kind: "stay" };
   }

@@ -5,7 +5,7 @@ import { useEditorStore } from "../store";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
-import { BottomPanel } from "./BottomPanel";
+import { ActivityFeed } from "./ActivityFeed";
 
 vi.mock("../store", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../store")>();
@@ -39,15 +39,21 @@ it("still explains a clean sequence in the verification panel", () => {
   expect(html).toContain("Timeline checks — 0 findings");
 });
 
-it("exposes review tabs and the current verification panel", () => {
-  useEditorStore.getState().loadTimeline(emptyTimeline("review-tabs"));
-  const html = renderToStaticMarkup(<BottomPanel />);
-  expect(html).toContain('aria-label="Review views"');
-  expect(html).toContain('role="tabpanel"');
-  expect(html).toContain(">Issues</button>");
-  expect(html).toContain(">Activity</button>");
-  expect(html).toContain("No clips to verify");
-  expect(html).not.toContain("No structural findings. Play through the cut to judge picture, sound, and intent.");
+it("names a timeline gap and provides a specific jump action", () => {
+  const base = putAsset(emptyTimeline("gap"), {id: "sample", kind: "video", duration: 1000});
+  const first = makeClip({id: "first", assetId: "sample", trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1});
+  useEditorStore.getState().loadTimeline({...base, clips: {first, second: {...first, id: "second", start: 2200}}});
+  const html = renderToStaticMarkup(<DiagnosticsPanel />);
+  expect(html).toContain('aria-label="Show on timeline: 1.2-second gap on V1"');
+  expect(html).toContain("1.00s to 2.20s");
+});
+
+it("shows edit activity independently of timeline diagnostics", () => {
+  useEditorStore.getState().loadTimeline(emptyTimeline("activity"));
+  const html = renderToStaticMarkup(<ActivityFeed />);
+  expect(html).toContain('aria-label="activity"');
+  expect(html).toContain("no ops yet");
+  expect(html).not.toContain('aria-label="diagnostics"');
 });
 
 it("labels structural errors without claiming all editor operations are blocked", () => {

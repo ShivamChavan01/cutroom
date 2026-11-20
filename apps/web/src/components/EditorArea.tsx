@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { Timeline } from "./Timeline";
 import { DiffPanel } from "./DiffPanel";
 import { MergePanel } from "./MergePanel";
-import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useVcsStore } from "../vcsStore";
 import { type EditorTab, useUiStore } from "../uiStore";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -21,7 +20,6 @@ export function EditorArea() {
   const tabs = useMemo(() => {
     const list: { id: EditorTab; label: string }[] = [
       { id: "timeline", label: "Timeline" },
-      { id: "verification", label: "Verification" },
     ];
     if (diffOverlay !== null) list.push({ id: "diff", label: "Diff" });
     if (pending !== null) list.push({ id: "merge", label: "Merge" });
@@ -56,7 +54,6 @@ export function EditorArea() {
         {active === "timeline" && <Timeline />}
         {active === "diff" && <DiffPanel />}
         {active === "merge" && <MergePanel />}
-        {active === "verification" && <DiagnosticsPanel />}
       </TabsContent>
     </Tabs>
   );

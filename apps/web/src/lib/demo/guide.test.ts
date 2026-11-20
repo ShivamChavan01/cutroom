@@ -8,10 +8,10 @@ import {useVcsStore} from "../../vcsStore";
 import {head} from "../vcs";
 
 beforeEach(() => installDemoProject());
-function view(rail: "media" | "versions" | "issues" = "media", tab: "timeline" | "verification" = "timeline") {
+function view(rail: "media" | "versions" | "issues" = "media") {
   const {repo, pending, diffOverlay} = useVcsStore.getState();
   if (repo === null) throw new Error("Expected sample");
-  return describeDemo({repo, pending, diff: diffOverlay, timeline: useEditorStore.getState().timeline, rail, tab});
+  return describeDemo({repo, pending, diff: diffOverlay, timeline: useEditorStore.getState().timeline, rail});
 }
 it("derives intro, versions, and comparison from real UI and diff state", () => {
   expect(view().kind).toBe("intro");
@@ -34,7 +34,7 @@ it("recognizes manual resolutions and a completed merge even after later commits
   useEditorStore.getState().dispatch({type: "setVolume", clipId: "score", volume: .4});
   vcs.commitCurrent("Adjust sound");
   expect(view().kind).toBe("merged");
-  expect(view("issues", "verification").kind).toBe("findings");
+  expect(view("issues").kind).toBe("findings");
 });
 it("recognizes manual editing, stale merges, cancellation and branch/detached views", () => {
   const vcs = useVcsStore.getState();
@@ -53,8 +53,8 @@ it("recognizes manual editing, stale merges, cancellation and branch/detached vi
 it("handles unavailable sample branches and changed metadata without pointing at a merge action", () => {
   const demo = createDemoProject();
   const timeline = current(demo.history);
-  expect(describeDemo({repo: {...demo.repo, branches: {main: "c2"}}, timeline, pending: null, diff: null, rail: "versions", tab: "timeline"}).kind).toBe("changed");
-  expect(describeDemo({repo: demo.repo, timeline: applyOp(timeline, {type: "setFrameRate", fps: 24}), pending: null, diff: null, rail: "versions", tab: "timeline"}).label).toBe("Open versions");
+  expect(describeDemo({repo: {...demo.repo, branches: {main: "c2"}}, timeline, pending: null, diff: null, rail: "versions"}).kind).toBe("changed");
+  expect(describeDemo({repo: demo.repo, timeline: applyOp(timeline, {type: "setFrameRate", fps: 24}), pending: null, diff: null, rail: "versions"}).label).toBe("Open versions");
 });
 
 it("does not call a project-setting disagreement a timing overlap", async () => {
@@ -68,7 +68,7 @@ it("does not call a project-setting disagreement a timing overlap", async () => 
   repo = commit(repo, {...base, fps: 24}, "theirs", "B");
   repo = checkout(repo, "main");
   const timeline = head(repo).timeline;
-  const description = describeDemo({repo, timeline, pending: startMerge(repo, timeline, "alternate"), diff: null, rail: "versions", tab: "merge"});
+  const description = describeDemo({repo, timeline, pending: startMerge(repo, timeline, "alternate"), diff: null, rail: "versions"});
   expect(description.title).toBe("These editing decisions need your review");
   expect(description.text).not.toContain("overlap");
 });

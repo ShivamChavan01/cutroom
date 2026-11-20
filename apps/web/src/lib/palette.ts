@@ -52,7 +52,7 @@ export function buildActions(): PaletteAction[] {
       id: "next-cut",
       label: "Jump to next cut",
       run: () => {
-        const cuts = videoClips().map((clip) => ({ start: clip.start }));
+        const cuts = videoClips().map((clip) => clip.start);
         const target = nextCut(cuts, state().playheadMs);
         if (target !== null) state().setPlayhead(target);
       },
@@ -61,7 +61,7 @@ export function buildActions(): PaletteAction[] {
       id: "previous-cut",
       label: "Jump to previous cut",
       run: () => {
-        const cuts = videoClips().map((clip) => ({ start: clip.start }));
+        const cuts = videoClips().map((clip) => clip.start);
         const target = previousCut(cuts, state().playheadMs);
         if (target !== null) state().setPlayhead(target);
       },
@@ -69,15 +69,12 @@ export function buildActions(): PaletteAction[] {
     {
       id: "show-issues",
       label: "Show issues panel",
-      run: () => {
-        useUiStore.getState().setBottomTab("issues");
-        useUiStore.getState().setRail("issues");
-      },
+      run: () => useUiStore.getState().setRail("issues"),
     },
     {
       id: "show-activity",
       label: "Show activity panel",
-      run: () => useUiStore.getState().setBottomTab("activity"),
+      run: () => useUiStore.getState().setReviewOpen(true),
     },
     {
       id: "show-timeline",

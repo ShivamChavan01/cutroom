@@ -287,3 +287,9 @@ describe("lint", () => {
     expect(blocking.every((d) => d.severity === "error")).toBe(true);
   });
 });
+
+it.each(["offline-source", "constructor", "toString", "__proto__", "hasOwnProperty"])("reports absent own asset %s as missing media", assetId => {
+  const clip = makeClip({id: "offline", assetId, trackId: "v1", start: 0, inPoint: 0, duration: 1000, volume: 1});
+  const timeline = {...emptyTimeline("Offline"), clips: {offline: clip}};
+  expect(lint(timeline, {include: ["missing-media"]}).map(finding => finding.clipIds)).toEqual([["offline"]]);
+});

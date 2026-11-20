@@ -1,21 +1,23 @@
 import { isDemoWorkspace } from "./lib/workspace";
 import { DemoGuide } from "./components/DemoGuide";
 import { usePersistenceStore } from "./lib/persistence/persistenceStore";
-import { useEffect } from "react";
-import { ChevronDown, ShieldCheck } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Group, useGroupRef } from "react-resizable-panels";
+import { layoutForPanels, readLayout, writeLayout } from "./lib/layout";
+import { MessageSquare, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { useUiStore } from "./uiStore";
-import { VersionRail } from "./components/VersionRail";
 import { ProjectSettings } from "./components/ProjectSettings";
 import { readViewPreferences, writeViewPreferences } from "./lib/viewPreferences";
 import { Preview } from "./components/Preview";
 import { EditorArea } from "./components/EditorArea";
-import { BottomPanel } from "./components/BottomPanel";
-import { ActivityBar } from "./components/ActivityBar";
+import { ActivityFeed } from "./components/ActivityFeed";
 import { SidePanel } from "./components/SidePanel";
 import { CommandPalette } from "./components/CommandPalette";
 import { StatusBar } from "./components/StatusBar";
+import { ActivityBar } from "./components/ActivityBar";
 import { TopBar } from "./components/TopBar";
 import { Inspector } from "./components/Inspector";
+import { AssistantPanel } from "./components/AssistantPanel";
 import { Panel, ResizableGroup, ResizeHandle } from "./components/ResizableGroup";
 import { deleteSelected, splitAtPlayhead } from "./lib/actions";
 import { useProjectPersistence } from "./lib/persistence/usePersistence";
@@ -36,8 +38,10 @@ export function App() {
   useProjectPersistence();
   const hydrated = usePersistenceStore((state) => state.hydrated);
   const rail = useUiStore((state) => state.rail);
+  const propertiesTab = useUiStore(state => state.propertiesTab);
+  const setPropertiesTab = useUiStore(state => state.setPropertiesTab);
   const reviewOpen = useUiStore((state) => state.reviewOpen);
-  const setReviewOpen = useUiStore((state) => state.setReviewOpen);
+  const activePanel = propertiesTab ?? rail;
 
   useEffect(() => {
     let storage: Storage;
@@ -66,7 +70,7 @@ export function App() {
         splitAtPlayhead();
       } else if (event.key === " ") {
         const target = event.target as HTMLElement | null;
-        if (target !== null && target.tagName === "BUTTON") return;
+        if (target?.closest("button, summary")) return;
         event.preventDefault();
         const store = useEditorStore.getState();
         if (store.isPlaying) store.pause();
@@ -77,62 +81,108 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const group = useGroupRef();
+  const assistantOpen = propertiesTab === "assistant";
+  const sidebarOpen = activePanel !== null && !assistantOpen;
+  const dock = assistantOpen ? "assistant" : sidebarOpen ? "properties" : null;
+  const widths = useRef({ properties: 34, assistant: 32 });
+  useLayoutEffect(() => {
+    if (!hydrated || !group.current) return;
+    let width = dock ? widths.current[dock] : 0;
+    if (dock) {
+      try {
+        const saved = readLayout(window.localStorage, dock === "assistant" ? "assistant-sidebar-width" : "editor-sidebar-width");
+        width = layoutForPanels(saved, ["viewer", dock], { viewer: 100 - width, [dock]: width })[dock] ?? width;
+      } catch { /* Use the session width if storage is unavailable. */ }
+    }
+    group.current.setLayout({ properties: dock === "properties" ? width : 0, viewer: 100 - width, assistant: dock === "assistant" ? width : 0 });
+  }, [dock, hydrated, group]);
+
+  const sidebarHeading = useRef<HTMLHeadingElement>(null);
+  const assistantHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (activePanel !== null) (activePanel === "assistant" ? assistantHeading : sidebarHeading).current?.focus({ preventScroll: true });
+  }, [activePanel]);
+
+  const closeTool = () => {
+    document.getElementById(`open-${activePanel}`)?.focus({ preventScroll: true });
+    setPropertiesTab(null);
+  };
+
   if (!hydrated) return <main className="workspace-loading" style={{inset: 0}} role="status">Restoring workspace…</main>;
 
   return (
     <div className="studio-shell editorial-shell flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <TopBar />
       <div className="mobile-notice" role="note">Cutroom editing is designed for desktop. Use a screen at least 1024px wide for the complete workspace.</div>
-      {hydrated && isDemoWorkspace() && <DemoGuide />}
+      {isDemoWorkspace() && <DemoGuide />}
       <CommandPalette />
       <div className="editorial-body">
-      <ActivityBar />
-      <div className="editorial-workspace">
-      <ResizableGroup
-        groupId="editorial-workspace"
-        orientation="vertical"
-        panelIds={["monitors", "sequence"]}
-        defaultLayout={{ monitors: 55, sequence: 45 }}
-      >
-        <Panel id="monitors" minSize={30}>
-          <ResizableGroup
-            groupId="editorial-monitors"
-            orientation="horizontal"
-            panelIds={["library", "viewer", "properties"]}
-            defaultLayout={{ library: 28, viewer: 49, properties: 23 }}
-          >
-            <Panel id="library" minSize={18}>
-              <div className="studio-library">
-                <aside aria-label="side panel" className="studio-library-content">
-                  {rail === "settings" ? <ProjectSettings /> : <SidePanel />}
-                </aside>
-              </div>
-            </Panel>
-            <ResizeHandle orientation="vertical" />
-            <Panel id="viewer" minSize={35}>
-              <div className="studio-viewer"><Preview /></div>
-            </Panel>
-            <ResizeHandle orientation="vertical" />
-            <Panel id="properties" minSize={17}>
-              <aside aria-label="inspector" className="studio-properties"><Inspector /></aside>
-            </Panel>
-          </ResizableGroup>
-        </Panel>
-        <ResizeHandle orientation="horizontal" />
-        <Panel id="sequence" minSize={25}>
-          <section aria-label="Sequence workspace" className="studio-sequence"><VersionRail /><div className="editorial-timeline"><EditorArea /></div></section>
-        </Panel>
-      </ResizableGroup>
+        <ActivityBar />
+        <Group groupRef={group} orientation="horizontal" defaultLayout={{ properties: 0, viewer: 100, assistant: 0 }}
+          onLayoutChange={layout => {
+            if (!dock || !layout[dock] || layout[dock === "assistant" ? "properties" : "assistant"] !== 0) return;
+            const width = layout[dock];
+            widths.current[dock] = width;
+            try { writeLayout(window.localStorage, dock === "assistant" ? "assistant-sidebar-width" : "editor-sidebar-width", { viewer: 100 - width, [dock]: width }); } catch { /* Keep the session width. */ }
+          }}>
+          <Panel id="properties" collapsible collapsedSize={0} minSize="344px" maxSize="60%"
+            onResize={(size, _id, previous) => {
+              const ui = useUiStore.getState();
+              if (size.inPixels === 0 && previous && previous.inPixels > 0 && (ui.propertiesTab === "inspector" || ui.rail)) closeTool();
+            }}>
+            <aside id="properties-sidebar" aria-label="Editor tools sidebar" hidden={!sidebarOpen}
+              className="studio-properties properties-panel" onKeyDown={event => {
+                if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeTool(); }
+              }}>
+              <header className="editor-tool-heading">
+                <h2 ref={sidebarHeading} tabIndex={-1}>{propertiesTab === "inspector" ? "Properties" : activePanel && activePanel[0]?.toUpperCase() + activePanel.slice(1)}</h2>
+                <button type="button" onClick={closeTool} aria-label="Close sidebar" title="Close sidebar"><PanelLeftClose size={17} /></button>
+              </header>
+              {rail && <div className="studio-library-content tool-project-content">
+                {rail === "settings" ? <ProjectSettings /> : <SidePanel />}
+              </div>}
+              <div hidden={propertiesTab !== "inspector"} className="properties-inspector"><Inspector /></div>
+            </aside>
+          </Panel>
+          {sidebarOpen && <ResizeHandle orientation="vertical" />}
+          <Panel id="viewer" minSize="40%">
+            <div className="editorial-workspace">
+              <ResizableGroup
+                groupId="editor-preview-timeline"
+                orientation="vertical"
+                panelIds={["monitors", "sequence"]}
+                defaultLayout={{ monitors: 66, sequence: 34 }}
+              >
+                <Panel id="monitors" minSize="30%">
+                  <div className="studio-viewer"><Preview /></div>
+                </Panel>
+                <ResizeHandle orientation="horizontal" />
+                <Panel id="sequence" minSize="250px">
+                  <section aria-label="Sequence workspace" className="studio-sequence"><div className="editorial-timeline"><EditorArea /></div></section>
+                </Panel>
+              </ResizableGroup>
+              {reviewOpen && <section id="editing-activity" className="studio-review-content" aria-label="Editing activity"><ActivityFeed /></section>}
+            </div>
+          </Panel>
+          {assistantOpen && <ResizeHandle orientation="vertical" />}
+          <Panel id="assistant" collapsible collapsedSize={0} minSize="344px" maxSize="60%"
+            onResize={(size, _id, previous) => {
+              if (size.inPixels === 0 && previous && previous.inPixels > 0 && useUiStore.getState().propertiesTab === "assistant") closeTool();
+            }}>
+            <aside id="assistant-sidebar" className="properties-panel assistant-dock" hidden={!assistantOpen}
+              aria-labelledby="assistant-title" onKeyDown={event => {
+                if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeTool(); }
+              }}>
+              <header className="editor-tool-heading">
+                <h2 ref={assistantHeading} tabIndex={-1} id="assistant-title"><MessageSquare size={17} aria-hidden />Assistant</h2>
+                <button type="button" onClick={closeTool} aria-label="Close Assistant" title="Close Assistant"><PanelRightClose size={17} /></button>
+              </header>
+              <div className="properties-assistant"><AssistantPanel active={assistantOpen} /></div>
+            </aside>
+          </Panel>
+        </Group>
       </div>
-      </div>
-      <section className={`studio-review${reviewOpen ? " is-open" : ""}`} aria-label="Review drawer">
-        <button type="button" className="studio-review-toggle" aria-expanded={reviewOpen} onClick={() => setReviewOpen(!reviewOpen)}>
-          <ShieldCheck size={13} aria-hidden /> Review
-          <span>Verification & activity</span>
-          <ChevronDown size={13} aria-hidden />
-        </button>
-        <div className="studio-review-content" hidden={!reviewOpen}><BottomPanel /></div>
-      </section>
       <StatusBar />
     </div>
   );

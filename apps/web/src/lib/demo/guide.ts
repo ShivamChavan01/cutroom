@@ -1,5 +1,5 @@
 import {isUnchanged, lint, type Timeline} from "@cutroom/engine";
-import type {EditorTab, RailItem} from "../../uiStore";
+import type {RailItem} from "../../uiStore";
 import type {DiffOverlay} from "../../vcsStore";
 import {assertMergeCurrent, type PendingMerge} from "../mergeSession";
 import {head, type Repo} from "../vcs";
@@ -8,7 +8,7 @@ import {createDemoProject} from "./project";
 export type GuideKind = "intro" | "versions" | "compare" | "conflict" | "resolved" | "merged" | "findings" | "changed" | "return" | "comparison";
 interface GuideInput {
   readonly repo: Repo; readonly timeline: Timeline; readonly pending: PendingMerge | null;
-  readonly diff: DiffOverlay | null; readonly rail: RailItem; readonly tab: EditorTab;
+  readonly diff: DiffOverlay | null; readonly rail: RailItem | null;
 }
 export interface GuideView {
   readonly kind: GuideKind; readonly step: number; readonly title: string;
@@ -32,7 +32,7 @@ function completedSample(repo: Repo): boolean {
 }
 
 /** Guide position is a view of editor state, never a second operation history. */
-export function describeDemo({repo, timeline, pending, diff, rail, tab}: GuideInput): GuideView {
+export function describeDemo({repo, timeline, pending, diff, rail}: GuideInput): GuideView {
   if (pending !== null) {
     try {assertMergeCurrent(pending, repo, timeline);}
     catch {return {kind: "changed", step: 4, title: "Your cut changed during this merge", text: "Your new edits are safe. Cancel this pending merge below, then start it again to include them.", label: "Review pending merge"};}
@@ -43,7 +43,7 @@ export function describeDemo({repo, timeline, pending, diff, rail, tab}: GuideIn
   }
   if (repo.currentBranch !== "main" || repo.detachedAt !== null) return {kind: "return", step: 2, title: "You're viewing another cut", text: "Compare its timing with main. Return to main in Versions when you're ready to combine the sample edits. Save any new edits before switching.", label: "Open versions"};
   if (completedSample(repo)) {
-    if (tab === "verification" || rail === "issues") return {kind: "findings", step: 6, title: "Decide whether the pause belongs", text: `${lint(timeline).length} structural findings in this cut. Click a finding to locate it. A deliberate pause may be right; the checker cannot decide that for you.`, label: "Open assistant"};
+    if (rail === "issues") return {kind: "findings", step: 6, title: "Decide whether the pause belongs", text: `${lint(timeline).length} structural findings in this cut. Click a finding to locate it. A deliberate pause may be right; the checker cannot decide that for you.`, label: "Open assistant"};
     return {kind: "merged", step: 5, title: "Review the combined cut", text: "The versions have been combined. A conflict-free merge can still contain a pause or missing content. Inspect the actual timeline before delivery.", label: "Inspect findings"};
   }
   if (!repo.branches.alternate || !["main", "alternate"].every(branch => isUnchanged(head(repo, branch).timeline, head(sample.repo, branch).timeline)) || !isUnchanged(timeline, head(repo).timeline)) {

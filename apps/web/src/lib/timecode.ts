@@ -19,34 +19,36 @@ export interface Cut {
   readonly start: number;
 }
 
+export function indexCutStarts(cuts: readonly Cut[]): readonly number[] {
+  return [...new Set(cuts.map(cut => cut.start))].sort((a, b) => a - b);
+}
+
+function lowerBound(sortedStarts: readonly number[], time: number): number {
+  let low = 0;
+  let high = sortedStarts.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (sortedStarts[middle]! < time) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
 /**
  * Playhead target for "previous cut": the start of the last clip that
  * begins before the playhead. Null when the playhead is already at or
  * before the first cut.
  */
-export function previousCut(cuts: readonly Cut[], playheadMs: number): number | null {
-  let best: number | null = null;
-  for (const cut of cuts) {
-    if (cut.start < playheadMs - 1) {
-      if (best === null || cut.start > best) best = cut.start;
-    }
-  }
-  return best;
+export function previousCut(sortedStarts: readonly number[], playheadMs: number): number | null {
+  return sortedStarts[lowerBound(sortedStarts, playheadMs - 1) - 1] ?? null;
 }
 
 /**
  * Playhead target for "next cut": the start of the first clip that begins
  * after the playhead. Null when there is nothing after it.
  */
-export function nextCut(cuts: readonly Cut[], playheadMs: number): number | null {
-  let best: number | null = null;
-  for (const cut of cuts) {
-    // Strictly after the playhead: a cut the playhead already sits on is
-    // the current cut, not the next one. The +1 keeps a cut 1ms away
-    // reachable while still excluding the cut under the playhead.
-    if (cut.start >= playheadMs + 1) {
-      if (best === null || cut.start < best) best = cut.start;
-    }
-  }
-  return best;
+export function nextCut(sortedStarts: readonly number[], playheadMs: number): number | null {
+  if (Number.isNaN(playheadMs)) return null;
+  // A cut one millisecond ahead is reachable, while the current cut is excluded.
+  return sortedStarts[lowerBound(sortedStarts, playheadMs + 1)] ?? null;
 }

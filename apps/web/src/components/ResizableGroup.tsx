@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
-import { type PanelLayout, readLayout, writeLayout } from "../lib/layout";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
+import { type PanelLayout, layoutForPanels, readLayout, writeLayout } from "../lib/layout";
 
 interface Props {
   readonly groupId: string;
@@ -9,7 +9,6 @@ interface Props {
   /** Panel ids in order, matching the Panel children. */
   readonly panelIds: readonly string[];
   readonly defaultLayout: PanelLayout;
-  readonly minSize?: number;
 }
 
 /**
@@ -23,26 +22,28 @@ export function ResizableGroup({
   children,
   panelIds,
   defaultLayout,
-  minSize = 10,
 }: Props) {
-  const [layout, setLayout] = useState<PanelLayout>(() => {
-    if (typeof window === "undefined") return defaultLayout;
-    return readLayout(window.localStorage, groupId) ?? defaultLayout;
-  });
-
-  // A saved layout from an older session may not cover the current panels.
-  useEffect(() => {
-    const known = panelIds.every((id) => layout[id] !== undefined);
-    if (!known) setLayout(defaultLayout);
-  }, [layout, panelIds, defaultLayout]);
+  const groupRef = useGroupRef();
+  const activeGroup = useRef(groupId);
+  const restore = (): PanelLayout => {
+    try { return layoutForPanels(readLayout(window.localStorage, groupId), panelIds, defaultLayout); }
+    catch { return defaultLayout; }
+  };
+  const [layout] = useState<PanelLayout>(restore);
+  useLayoutEffect(() => {
+    if (activeGroup.current === groupId) return;
+    activeGroup.current = groupId;
+    groupRef.current?.setLayout({ ...restore() });
+  }, [groupId, panelIds, defaultLayout, groupRef]);
 
   return (
     <Group
       orientation={orientation}
+      groupRef={groupRef}
       defaultLayout={layout}
       onLayoutChange={(next) => {
-        setLayout(next);
-        writeLayout(window.localStorage, groupId, next);
+        if (activeGroup.current !== groupId) return;
+        try { writeLayout(window.localStorage, groupId, next); } catch { /* Resizing remains available without browser storage. */ }
       }}
     >
       {children}
@@ -53,9 +54,11 @@ export function ResizableGroup({
 export { Panel, Separator };
 
 /** The drag affordance: a thin rule that highlights on hover/focus. */
-export function ResizeHandle({ orientation }: { orientation: "horizontal" | "vertical" }) {
+export function ResizeHandle({ orientation, disabled = false }: { orientation: "horizontal" | "vertical"; disabled?: boolean }) {
   return (
     <Separator
+      disabled={disabled}
+      hidden={disabled}
       className={
         orientation === "vertical"
           ? "group relative w-px bg-border data-[resize-handle-active]:bg-primary"

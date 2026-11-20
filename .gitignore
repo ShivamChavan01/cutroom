@@ -24,3 +24,12 @@ dist
 /ChatGPT Image*.png
 /bridge/
 .vercel
+
+# Private working notes and review artifacts are kept outside the repository.
+/CONTEXT.md
+/CARDBOARD-KB.md
+/*-REPORT.md
+/CUTROOM-ADVERSARIAL-QA.md
+/QA-FINDINGS.md
+/TEST-RESULTS.md
+/private/

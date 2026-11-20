@@ -1,3 +1,4 @@
+import { openProjectTool } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -98,8 +99,8 @@ async function pause(page) {
 }
 
 async function commit(page, message) {
-  await page.getByPlaceholder("commit message", { exact: true }).fill(message);
-  await page.getByRole("button", { name: "Commit", exact: true }).click();
+  await page.getByPlaceholder("Describe your edit", { exact: true }).fill(message);
+  await page.getByRole("button", { name: "Save version", exact: true }).click();
 }
 
 async function split(page, name, steps) {
@@ -142,12 +143,12 @@ try {
     await play(page);
     await capture(page, "restored-playing");
     await pause(page);
-    await page.getByRole("button", { name: "Issues", exact: true }).click();
-    await page.getByRole("button", { name: "Open issues panel", exact: true }).click();
-    assert.equal(await page.locator(".studio-review-toggle").getAttribute("aria-expanded"), "true");
-    await page.getByRole("tab", { name: "Activity", exact: true }).click();
-    await page.locator(".studio-review-toggle").click();
-    assert.equal(await page.locator(".studio-review-toggle").getAttribute("aria-expanded"), "false");
+    await openProjectTool(page, "Issues");
+    await page.getByLabel("diagnostics", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
+    assert.equal(await page.getByRole("button", {name: "Activity", exact: true}).getAttribute("aria-expanded"), "true");
+    await page.getByRole("button", {name: "Activity", exact: true}).click();
+    assert.equal(await page.getByRole("button", {name: "Activity", exact: true}).getAttribute("aria-expanded"), "false");
     await capture(page, "review-drawer-open-and-close");
   });
 
@@ -173,7 +174,7 @@ try {
     assert.equal(await page.getByRole("button", { name: "clip " + firstName, exact: true }).count(), 0);
     await capture(page, "split-undo-redo");
     await page.keyboard.press("Control+z");
-    await page.getByRole("button", { name: "Versions", exact: true }).click();
+    await openProjectTool(page, "Versions");
     assert.ok(await page.locator(".vcs-summary.text-warn").evaluate((item) => {
       const sample = document.createElement("span");
       sample.style.color = "var(--color-warn)";
@@ -188,15 +189,18 @@ try {
     await capture(page, "laptop-layout-fits");
     await page.setViewportSize({ width: 1440, height: 900 });
     await commit(page, "QA base");
-    await page.getByPlaceholder("new branch").fill("qa-alternate");
-    await page.getByRole("button", { name: "Branch", exact: true }).click();
-    await page.getByRole("combobox", { name: "Current branch", exact: true }).selectOption({ label: "qa-alternate" });
+    await page.getByText("Create another cut", {exact: true}).click();
+  await page.getByLabel("Switch to this cut").uncheck();
+  await page.getByLabel("Cut name", {exact: true}).fill("qa-alternate");
+    await page.getByRole("button", { name: "Create cut", exact: true }).click();
+    await page.getByRole("combobox", { name: "Current cut", exact: true }).selectOption({ label: "qa-alternate" });
     await split(page, firstName, 6);
     await commit(page, "QA alternate split");
-    await page.getByRole("combobox", { name: "Current branch", exact: true }).selectOption({ label: "main" });
+    await page.getByRole("combobox", { name: "Current cut", exact: true }).selectOption({ label: "main" });
     await split(page, firstName, 3);
     await commit(page, "QA main split");
-    await page.getByRole("combobox", { name: "Merge source", exact: true }).selectOption({ label: "qa-alternate" });
+    if (!await page.getByRole("combobox", { name: "Merge source", exact: true }).isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
+  await page.getByRole("combobox", { name: "Merge source", exact: true }).selectOption({ label: "qa-alternate" });
     await page.getByRole("button", { name: "Merge", exact: true }).click();
     const header = page.locator("header").filter({ hasText: "Merging" });
     assert.match(await header.innerText(), /Merging qa-alternate into main/);
@@ -210,12 +214,12 @@ try {
     await page.getByRole("button", { name: "Commit merge", exact: true }).click();
     await page.getByRole("button", { name: /QA resolved merge/ }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Commit merge", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("combobox", { name: "Current branch", exact: true }).inputValue(), "main");
+    assert.equal(await page.getByRole("combobox", { name: "Current cut", exact: true }).inputValue(), "main");
     await capture(page, "merge-committed-on-main");
     await page.getByText("saved", { exact: true }).waitFor();
     await page.reload();
     await decoded(page);
-    await page.getByRole("button", { name: "Versions", exact: true }).click();
+    await openProjectTool(page, "Versions");
     await page.getByRole("button", { name: /QA resolved merge/ }).waitFor();
     await capture(page, "merge-and-media-restored");
   });

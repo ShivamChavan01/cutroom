@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "brief": "Authored test brief for the bundled motion study. Keep the opening, middle and ending in story order, retain the sound bed, and keep the cut within eight seconds. This is a controlled fixture, not an analysis of a real production.",
+  "styleReferences": [
+    { "id": "reference", "label": "Authored reference direction", "direction": "Keep the geometric motion legible. Review pacing against the opening source range; no automatic style match is claimed.", "evidenceIds": ["opening-note"] }
+  ],
+  "requirements": [
+    { "id": "duration", "label": "Eight-second deliverable", "priority": "required", "kind": "duration", "minMs": 0, "maxMs": 8000 },
+    { "id": "sound", "label": "Retain the sound bed", "priority": "required", "kind": "preserve", "range": { "assetId": "8bc2e33bfa5e8c6907cf769f9f333c5151cd6cfcc8abcbaf37798008268e2c32", "channel": "audio", "inMs": 0, "outMs": 7000 } },
+    { "id": "order", "label": "Opening before middle before ending", "priority": "required", "kind": "sequence", "maxGapMs": 1500, "ranges": [
+      { "assetId": "9f31ed8bd64347bef05d05bca7a8c6eab585c0d7cdf0d55f9fc6ae577f400d99", "channel": "video", "inMs": 100, "outMs": 1900 },
+      { "assetId": "9f31ed8bd64347bef05d05bca7a8c6eab585c0d7cdf0d55f9fc6ae577f400d99", "channel": "video", "inMs": 2000, "outMs": 4000 },
+      { "assetId": "9f31ed8bd64347bef05d05bca7a8c6eab585c0d7cdf0d55f9fc6ae577f400d99", "channel": "video", "inMs": 4000, "outMs": 6000 }
+    ] },
+    { "id": "continuity", "label": "Visual continuity", "priority": "required", "kind": "editorial", "instruction": "A reviewer must check that the geometric motion remains coherent across the cut. These authored notes are not a visual verification.", "evidenceIds": ["opening-note"] }
+  ],
+  "evidence": [
+    { "id": "opening-note", "kind": "shot-note", "range": { "assetId": "9f31ed8bd64347bef05d05bca7a8c6eab585c0d7cdf0d55f9fc6ae577f400d99", "channel": "video", "inMs": 100, "outMs": 1900 }, "text": "Authored fixture note: use this opening range as a reference for reviewing legibility and pacing. No model inspected the frames.", "provenance": "user-provided" },
+    { "id": "sound-note", "kind": "continuity-note", "range": { "assetId": "8bc2e33bfa5e8c6907cf769f9f333c5151cd6cfcc8abcbaf37798008268e2c32", "channel": "audio", "inMs": 0, "outMs": 7000 }, "text": "Authored fixture requirement: retain the continuous sound bed across the sequence.", "provenance": "user-provided" }
+  ]
+}

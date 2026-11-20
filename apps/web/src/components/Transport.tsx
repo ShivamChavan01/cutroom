@@ -1,6 +1,7 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { timelineDuration } from "@cutroom/engine";
-import { formatTimecode, nextCut, previousCut } from "../lib/timecode";
+import { useMemo } from "react";
+import { indexedTimelineDuration } from "../lib/clipIndex";
+import { formatTimecode, indexCutStarts, nextCut, previousCut } from "../lib/timecode";
 import { useEditorStore, usePlayhead } from "../store";
 import { Button } from "./ui/button";
 
@@ -12,17 +13,18 @@ export function Transport() {
   const play = useEditorStore((state) => state.play);
   const pause = useEditorStore((state) => state.pause);
 
-  const cuts = Object.values(timeline.clips).map((clip) => ({ start: clip.start }));
+  const cuts = useMemo(() => indexCutStarts(Object.values(timeline.clips)), [timeline.clips]);
   const prev = previousCut(cuts, playheadMs);
   const next = nextCut(cuts, playheadMs);
 
+  const duration = indexedTimelineDuration(timeline);
   const togglePlayback = () => {
     if (isPlaying) {
       pause();
       return;
     }
-    if (timelineDuration(timeline) === 0) return;
-    if (playheadMs >= timelineDuration(timeline)) setPlayhead(0);
+    if (duration === 0) return;
+    if (playheadMs >= duration) setPlayhead(0);
     play();
   };
 
@@ -41,6 +43,7 @@ export function Transport() {
       <Button
         size="icon"
         variant="default"
+        disabled={!isPlaying && duration === 0}
         onClick={togglePlayback}
         title={isPlaying ? "Pause (Space)" : "Play (Space)"}
         aria-label={isPlaying ? "pause" : "play"}

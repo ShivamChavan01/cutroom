@@ -1,8 +1,7 @@
 # Owned adversarial QA fixtures
 
 QA only: these files do not fix or modify the application. The four minimal
-regressions intentionally fail on `254fb52`. See `../../CUTROOM-ADVERSARIAL-QA.md`
-for observations, GitHub issues, counts, production/local distinctions and limits.
+regressions intentionally fail on the historical revision `254fb52`.
 All generated media and browser profiles go under `.gstack/adversarial-qa/`.
 No personal project, credentials or paid AI request is required.
 

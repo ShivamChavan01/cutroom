@@ -1,3 +1,4 @@
+import { openProjectTool } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -48,7 +49,7 @@ try {
     store.dispatch({ type: "trimClip", clipId: clip.id, duration: 3000 });
     store.dispatch({ type: "addClip", clip: { ...clip, id: "ai-second", start: 4000, inPoint: 3000, duration: 3000, outPoint: 6000 } });
   });
-  await page.getByRole("button", { name: "Issues", exact: true }).click();
+  await openProjectTool(page, "Issues");
   await page.getByRole("button", { name: "Explain issues with AI", exact: true }).click();
   const generate = page.getByRole("button", { name: "Explain & propose fixes", exact: true });
   await generate.click();

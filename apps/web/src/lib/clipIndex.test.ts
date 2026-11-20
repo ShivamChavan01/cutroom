@@ -14,7 +14,7 @@ import {
   type Op,
   type Timeline,
 } from "@cutroom/engine";
-import { indexedClipsOnTrack, indexedTimelineDuration } from "./clipIndex";
+import { indexedClipCount, indexedClipsOnTrack, indexedTimelineDuration } from "./clipIndex";
 
 function clip(id: string, start: number, trackId = "v1", duration = 1_000) {
   return makeClip({ id, start, trackId, duration, assetId: "asset", inPoint: 500, volume: 1 });
@@ -30,6 +30,7 @@ function expectMatchesEngine(timeline: Timeline): void {
     expect(indexedClipsOnTrack(timeline, trackId)).toEqual(clipsOnTrack(timeline, trackId));
   }
   expect(indexedTimelineDuration(timeline)).toBe(timelineDuration(timeline));
+  expect(indexedClipCount(timeline)).toBe(Object.keys(timeline.clips).length);
 }
 
 describe("clip index", () => {
@@ -40,6 +41,7 @@ describe("clip index", () => {
     expect(indexedClipsOnTrack(timeline, "missing")).toBe(empty);
     expect(indexedClipsOnTrack(emptyTimeline(), "other")).toBe(empty);
     expect(indexedTimelineDuration(timeline)).toBe(0);
+    expect(indexedClipCount(timeline)).toBe(0);
   });
 
   it("matches engine ordering for unsorted tracks, overlaps and raw ID ties", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseProductionDocument } from "../production/document";
 import {
   type Timeline,
   type Op,
@@ -74,6 +75,26 @@ function repoWithMerge(): Repo {
 }
 
 describe("project serialization", () => {
+  it("round-trips production context in schema 3 and preserves old projects without it", () => {
+    const history = historyWithRedoTail(), repo = createRepo(baseTimeline(), "alice");
+    const production = parseProductionDocument({ version: 1, brief: "Preserve the complete customer statement.", styleReferences: [], requirements: [], evidence: [] });
+    const raw = serializeProject({ history, repo, production });
+    expect(JSON.parse(raw).version).toBe(3);
+    expect(deserializeProject(raw).production).toEqual(production);
+    for (const version of [1, 2]) {
+      const legacy = JSON.stringify({ ...JSON.parse(serializeProject({ history, repo })), version });
+      expect(deserializeProject(legacy).production).toBeNull();
+    }
+  });
+
+  it("retains raw recovery data for malformed context and rejects context hidden in older schemas", () => {
+    const raw = JSON.parse(serializeProject({ history: historyWithRedoTail(), repo: createRepo(baseTimeline(), "alice") }));
+    for (const version of [2, 3]) {
+      const corrupt = JSON.stringify({ ...raw, version, production: { brief: "incomplete" } });
+      try { deserializeProject(corrupt); throw new Error("Expected rejection"); }
+      catch (cause) { expect(cause).toBeInstanceOf(ProjectLoadError); if (cause instanceof ProjectLoadError) expect(cause.raw).toBe(corrupt); }
+    }
+  });
   it("round-trips a history that has a redo tail", () => {
     const history = historyWithRedoTail();
     const repo = createRepo(baseTimeline(), "alice");

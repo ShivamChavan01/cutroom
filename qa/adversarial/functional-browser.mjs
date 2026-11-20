@@ -11,7 +11,7 @@ async function state(p){return p.evaluate(async()=>{const e=(await import('/src/
 async function until(p,fn,arg){const end=Date.now()+30000;while(Date.now()<end){if(await p.evaluate(fn,arg))return;await p.waitForTimeout(50)}throw Error('condition timed out')}
 async function saved(p){await p.locator('[data-save-status="saved"]').waitFor()}
 async function upload(p,file){const n=Object.keys((await state(p)).timeline.clips).length;const start=performance.now();await p.locator('header input[type="file"]').first().setInputFiles(file);await until(p,async n=>Object.keys((await import('/src/store.ts')).useEditorStore.getState().timeline.clips).length===n+1,n);await saved(p);return performance.now()-start}
-async function commit(p,message){await p.getByRole('button',{name:'Versions',exact:true}).click();await p.getByRole('textbox',{name:'Commit message',exact:true}).fill(message);await p.getByRole('button',{name:'Commit',exact:true}).click();await saved(p)}
+async function commit(p,message){await p.getByRole('button',{name:'Versions',exact:true}).click();await p.getByRole('textbox',{name:'What changed?',exact:true}).fill(message);await p.getByRole('button',{name:'Save version',exact:true}).click();await saved(p)}
 async function fileSize(p,id){return p.evaluate(async id=>{try{const r=await navigator.storage.getDirectory(),d=await r.getDirectoryHandle('media.demo-v1');return(await(await d.getFileHandle(id)).getFile()).size}catch{return null}},id)}
 try{
  const {c,p}=await fresh();

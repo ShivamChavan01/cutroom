@@ -1,3 +1,4 @@
+import { openProjectTool, openSampleGuide } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
@@ -32,7 +33,7 @@ async function project(page) {
   await saved(page);
   return page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("cutroom", 1);
+      const request = indexedDB.open("cutroom");
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -54,13 +55,13 @@ async function upload(page) {
   await page.locator('header input[type="file"]').first().setInputFiles(input);
 }
 async function commit(page, message) {
-  await page.getByRole("button", {name: "Versions", exact: true}).click();
-  await page.getByRole("textbox", {name: "Commit message", exact: true}).fill(message);
-  await page.getByRole("button", {name: "Commit", exact: true}).click();
+  await openProjectTool(page, "Versions");
+  await page.getByRole("textbox", {name: "What changed?", exact: true}).fill(message);
+  await page.getByRole("button", {name: "Save version", exact: true}).click();
 }
 async function checkout(page, branch) {
-  await page.getByRole("button", {name: "Versions", exact: true}).click();
-  await page.getByRole("combobox", {name: "Current branch", exact: true}).selectOption(branch);
+  await openProjectTool(page, "Versions");
+  await page.getByRole("combobox", {name: "Current cut", exact: true}).selectOption(branch);
   await saved(page);
 }
 async function playSource(page, timeline, clip) {
@@ -117,7 +118,7 @@ try {
     assert.equal(await mediaBytes(page, clip.assetId), bytes.length);
     await page.getByRole("button", {name: `clip ${clip.id}`, exact: true}).click();
     await page.keyboard.press("Delete");
-    await page.getByRole("button", {name: "Media", exact: true}).focus();
+    await page.getByRole("button", {name: "Project menu", exact: true}).focus();
     await page.keyboard.press("Control+z"); await page.keyboard.press("Control+Shift+z"); await page.keyboard.press("Control+z");
     assert.equal(await mediaBytes(page, clip.assetId), bytes.length);
     await commit(page, "Restored source"); const committed = await project(page);
@@ -175,7 +176,7 @@ try {
     });
     await upload(page); await page.waitForFunction(() => window.qaWriteHeld === true);
     if (action === "reset") {
-      page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", {name: "Reset sample", exact: true}).click();
+      page.once("dialog", dialog => dialog.accept()); await openSampleGuide(page); await page.getByRole("button", {name: "Reset sample", exact: true}).click();
       await page.getByRole("button", {name: "See two versions", exact: true}).waitFor();
     } else {
       await checkout(page, "alternate"); if (action === "away-and-back") await checkout(page, "main");

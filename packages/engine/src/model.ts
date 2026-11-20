@@ -78,6 +78,11 @@ export interface Timeline {
   readonly assets: Readonly<Record<string, Asset>>;
 }
 
+/** Offline references must not resolve to inherited Object properties. */
+export function assetById(timeline: Timeline, id: string): Asset | undefined {
+  return Object.hasOwn(timeline.assets, id) ? timeline.assets[id] : undefined;
+}
+
 /** Zero-length clips carry no content and would poison every geometric check. */
 export function clipIsWellFormed(clip: Clip): boolean {
   return (

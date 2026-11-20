@@ -3,9 +3,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
 import { AssistantAccessCode, AssistantPanel, ProposalReview } from "./AssistantPanel";
 import { parsePlan, previewPlan } from "../lib/assistant/proposal";
+import { parseProductionDocument } from "../lib/production/document";
 
 const before = { ...putAsset(emptyTimeline(), { id: "a", kind: "video", duration: 10_000 }), clips: { c: makeClip({ id: "c", assetId: "a", trackId: "v1", start: 1000, duration: 1000, inPoint: 0, volume: 1 }) } };
 describe("assistant presentation", () => {
+  it("shows blocked production regressions and keeps editorial judgments explicitly unverified", () => {
+    const document = parseProductionDocument({ version: 1, brief: "Keep the opening image and reference style.", styleReferences: [], evidence: [], requirements: [
+      { id: "image", label: "Opening image", priority: "required", kind: "preserve", range: { assetId: "a", channel: "video", inMs: 0, outMs: 1000 } },
+      { id: "style", label: "Reference style", priority: "required", kind: "editorial", instruction: "Check the reference style.", evidenceIds: [] },
+    ] });
+    const html = renderToStaticMarkup(<ProposalReview proposal={previewPlan(before, { summary: "Remove image", ops: [{ type: "deleteClip", clipId: "c" }] }, [], document)} />);
+    expect(html).toContain("Production requirement preview");
+    expect(html).toContain("worsens required production constraints");
+    expect(html).toContain("human review needed");
+  });
   it("renders a labeled password field for reviewer access without saving credentials", () => {
     const html = renderToStaticMarkup(<AssistantAccessCode value="" onChange={() => {}} />);
     expect(html).toContain('for="assistant-access-code"');
@@ -19,6 +30,11 @@ describe("assistant presentation", () => {
     expect(html).toContain('aria-label="AI verification assistant"');
     expect(html).toContain("Explain &amp; propose fixes");
     expect(html).toContain('for="assistant-prompt"');
+    expect(html).toContain('aria-label="Edit brief and references"');
+    expect(html).toContain('class="agent-context-editor" hidden=""');
+    expect(html).toContain("Brief &amp; references");
+    expect(html).toContain("Ask about this cut");
+    expect(html).toContain('aria-label="Assistant conversation"');
     expect(html).toContain("Media files stay on this computer");
     expect(html).toContain("cannot watch or listen");
     expect(html).not.toContain("API key");

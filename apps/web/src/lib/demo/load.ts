@@ -1,10 +1,12 @@
 import { useEditorStore } from "../../store";
 import { useVcsStore } from "../../vcsStore";
+import { useProductionStore } from "../../productionStore";
 import { registerAssetUrls } from "../assets";
 import { createDemoProject, demoMediaUrls } from "./project";
 
 /** Only called inside the demo workspace, including explicit reset. */
 export function installDemoProject(): void {
+  useProductionStore.getState().clear();
   const demo = createDemoProject();
   useEditorStore.getState().restoreHistory(demo.history);
   useVcsStore.getState().restoreRepo(demo.repo);

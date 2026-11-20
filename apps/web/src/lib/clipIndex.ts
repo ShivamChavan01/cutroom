@@ -3,6 +3,7 @@ import type { Clip, Timeline } from "@cutroom/engine";
 interface ClipIndex {
   readonly byTrack: ReadonlyMap<string, readonly Clip[]>;
   readonly duration: number;
+  readonly count: number;
 }
 
 const indexes = new WeakMap<Timeline["clips"], ClipIndex>();
@@ -14,7 +15,8 @@ function indexClips(clips: Timeline["clips"]): ClipIndex {
 
   const byTrack = new Map<string, Clip[]>();
   let duration = 0;
-  for (const clip of Object.values(clips)) {
+  const entries = Object.values(clips);
+  for (const clip of entries) {
     const group = byTrack.get(clip.trackId);
     if (group === undefined) byTrack.set(clip.trackId, [clip]);
     else group.push(clip);
@@ -24,7 +26,7 @@ function indexClips(clips: Timeline["clips"]): ClipIndex {
   for (const group of byTrack.values()) {
     group.sort((a, b) => a.start - b.start || (a.id < b.id ? -1 : 1));
   }
-  const index: ClipIndex = { byTrack, duration };
+  const index: ClipIndex = { byTrack, duration, count: entries.length };
   indexes.set(clips, index);
   return index;
 }
@@ -37,4 +39,8 @@ export function indexedClipsOnTrack(timeline: Timeline, trackId: string): readon
 
 export function indexedTimelineDuration(timeline: Timeline): number {
   return indexClips(timeline.clips).duration;
+}
+
+export function indexedClipCount(timeline: Timeline): number {
+  return indexClips(timeline.clips).count;
 }

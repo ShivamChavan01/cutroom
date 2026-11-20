@@ -1,6 +1,6 @@
 # Cutroom demo limitations
 
-This is an engineering interview prototype. The tested workflow demonstrates
+This is a video-editor prototype. The tested workflow demonstrates
 structured edits, comparison, conflict-aware merging and structural review.
 It does not establish general commercial editor reliability.
 

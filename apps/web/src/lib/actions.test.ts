@@ -3,7 +3,7 @@ import {emptyTimeline, makeClip} from "@cutroom/engine";
 import {useEditorStore} from "../store";
 import {useVcsStore} from "../vcsStore";
 import {useUiStore} from "../uiStore";
-import {deleteSelected, splitAtPlayhead} from "./actions";
+import {canSplitAtPlayhead, deleteSelected, splitAtPlayhead} from "./actions";
 import {deleteMedia} from "./media/opfs";
 vi.mock("./media/opfs", async original => ({...await original<typeof import("./media/opfs")>(), deleteMedia: vi.fn(async () => true)}));
 beforeEach(() => {
@@ -19,6 +19,19 @@ function addImport() {
   e.selectClip("imported");
   return useEditorStore.getState().timeline;
 }
+it("allows a split only inside the selected clip on an unlocked track", () => {
+  addImport();
+  const canSplit = (locked: readonly string[] = []) => canSplitAtPlayhead(useEditorStore.getState(), locked);
+  expect(canSplit()).toBe(false);
+  useEditorStore.getState().setPlayhead(1000);
+  expect(canSplit()).toBe(true);
+  expect(canSplit(["v1"])).toBe(false);
+  useEditorStore.getState().setPlayhead(2000);
+  expect(canSplit()).toBe(false);
+  useEditorStore.getState().setPlayhead(1000);
+  useEditorStore.getState().selectClip(null);
+  expect(canSplit()).toBe(false);
+});
 it.each([false, true])("deleting an import retains its source through Undo/Redo (committed: %s)", committed => {
   const imported = addImport(), e = useEditorStore.getState();
   if (committed) useVcsStore.getState().commitCurrent("Imported source");

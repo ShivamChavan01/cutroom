@@ -1,3 +1,4 @@
+import { openProjectTool } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -23,8 +24,8 @@ async function until(predicate) {
   throw new Error("Browser condition timed out");
 }
 async function save(message) {
-  await page.getByLabel("Commit message", { exact: true }).fill(message);
-  await page.getByRole("button", { name: "Commit", exact: true }).click();
+  await page.getByLabel("What changed?", { exact: true }).fill(message);
+  await page.getByRole("button", { name: "Save version", exact: true }).click();
 }
 async function graph() {
   await page.getByRole("tab", { name: "Graph", exact: true }).click();
@@ -34,23 +35,25 @@ try {
   await page.goto(target);
   await page.locator('header input[type="file"]').first().setInputFiles(process.env.TEST_VIDEO_A);
   await until(async () => Object.keys((await import("/src/store.ts")).useEditorStore.getState().timeline.clips).length === 1);
-  await page.getByRole("button", { name: "Versions", exact: true }).click();
+  await openProjectTool(page, "Versions");
   // Make an initial committed edit whether the repository was initialized before or after import.
   await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().dispatch({ type: "renameProject", name: "Branch graph QA" }));
   await save("Import interview footage");
-  await page.getByLabel("New branch name").fill("alternate-cut");
-  await page.getByRole("button", { name: "Branch", exact: true }).click();
+  await page.getByText("Create another cut", {exact: true}).press("Space");
+  await page.getByLabel("Switch to this cut").uncheck();
+  await page.getByLabel("Cut name", {exact: true}).fill("alternate-cut");
+  await page.getByRole("button", { name: "Create cut", exact: true }).click();
   await graph();
   await page.getByText("Shared tip", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(output, "shared-tip.png") });
   await page.getByRole("tab", { name: "History", exact: true }).click();
-  await page.getByLabel("Current branch", { exact: true }).selectOption("alternate-cut");
+  await page.getByLabel("Current cut", { exact: true }).selectOption("alternate-cut");
   await page.evaluate(async () => {
     const store = (await import("/src/store.ts")).useEditorStore.getState();
     store.dispatch({ type: "trimClip", clipId: Object.keys(store.timeline.clips)[0], duration: 8000 });
   });
   await save("Shorter alternate opening");
-  await page.getByLabel("Current branch", { exact: true }).selectOption("main");
+  await page.getByLabel("Current cut", { exact: true }).selectOption("main");
   await page.evaluate(async () => {
     const store = (await import("/src/store.ts")).useEditorStore.getState();
     store.dispatch({ type: "trimClip", clipId: Object.keys(store.timeline.clips)[0], duration: 10000 });
@@ -61,6 +64,7 @@ try {
   assert.ok(lanes.includes(0) && lanes.includes(1));
   await page.screenshot({ path: path.join(output, "fork.png") });
   await page.getByRole("tab", { name: "History", exact: true }).click();
+  if (!await page.getByLabel("Merge source").isVisible()) await page.getByText("Combine cuts", {exact: true}).click();
   await page.getByLabel("Merge source").selectOption("alternate-cut");
   await page.getByRole("button", { name: "Merge", exact: true }).click();
   await page.getByRole("button", { name: "Take theirs", exact: true }).click();
@@ -89,7 +93,7 @@ try {
   assert.equal(await page.getByText("Viewing · HEAD", { exact: true }).count(), 1);
   const unchanged = await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().timeline.id);
   assert.equal(unchanged, "Unsaved work");
-  assert.match(await page.getByRole("alert").innerText(), /uncommitted changes/);
+  assert.match(await page.getByRole("alert").innerText(), /Save a version or create another cut/);
   await page.evaluate(async () => (await import("/src/store.ts")).useEditorStore.getState().undo());
   await page.locator(".commit-graph-row").filter({ hasText: "Import interview footage" }).click();
   await until(async () => (await import("/src/store.ts")).useEditorStore.getState().timeline.id === "Branch graph QA");

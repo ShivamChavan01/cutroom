@@ -58,7 +58,9 @@ describe("editorial editing features", () => {
     expect(repo.currentBranch).toBe("alternate");
     expect(useEditorStore.getState().timeline.clips["clip-a"]?.rotation).toBe(15);
     expect(currentCommit(repo).timeline.clips["clip-a"]?.rotation ?? 0).toBe(0);
-    expect(renderToStaticMarkup(<VersionRail />)).toContain("Switch to version alternate");
+    const html = renderToStaticMarkup(<VersionRail />);
+    expect(html).toContain('<option selected="">alternate</option>');
+    expect(html).toContain("Switch to this cut");
   });
 
   it("tracks project settings changes as uncommitted metadata", () => {
@@ -69,6 +71,7 @@ describe("editorial editing features", () => {
     expect(diffTimelines(before,after).metadataChanges).toEqual(expect.arrayContaining(["id","fps"]));
     const html=renderToStaticMarkup(<ProjectSettings />);
     expect(html).toContain('value="North cut"');
+    expect(html).toContain("Changes save automatically");
     expect(html).toContain('<option value="24" selected="">24 fps</option>');
   });
 

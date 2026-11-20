@@ -174,3 +174,12 @@ describe("identity rule (absolute-vs-relative URL regression)", () => {
     expect(warmMatches(null, "b", "x")).toBe(false);
   });
 });
+
+it("keeps an in-flight decoder at the cut when it already holds the requested URL", () => {
+  const pending = snap({warm: {side: "b", assetId: "asset-b", elementReady: false}, useParkedSlot: true});
+  expect(decideSwap("asset-b", pending)).toEqual({kind: "flip", to: "b"});
+  expect(decideSwap("asset-b", {...pending, useParkedSlot: false})).toEqual({kind: "coldLoad", side: "a"});
+  // An editing copy can change the URL while retaining the original asset ID.
+  expect(decideSwap("asset-a", pending)).toEqual({kind: "flip", to: "b"});
+  expect(decideSwap("asset-a", {...pending, useParkedSlot: false})).toEqual({kind: "stay"});
+});

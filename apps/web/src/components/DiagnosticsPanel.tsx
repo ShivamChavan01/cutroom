@@ -1,6 +1,7 @@
 import {explainDiagnostic} from "../lib/diagnosticExplanation";
 import { useMemo } from "react";
 import { lint } from "@cutroom/engine";
+import { useUiStore } from "../uiStore";
 import { useEditorStore } from "../store";
 
 /**
@@ -36,28 +37,21 @@ export function DiagnosticsPanel() {
         <div style={{ color: "var(--color-success)" }}>No structural findings. Play through the cut to judge picture, sound, and intent.</div>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {diagnostics.map((diagnostic, index) => {
+          {diagnostics.map(diagnostic => {
             const explanation = explainDiagnostic(timeline, diagnostic);
             return (
-            <li key={`${diagnostic.rule}-${index}`} style={{ marginBottom: 4 }}>
-              <button
-                onClick={() => {
-                  if (diagnostic.where !== undefined) {
-                    setPlayhead(diagnostic.where);
-                  }
-                  selectClip(diagnostic.clipIds[0] ?? null);
-                }}
-                className={"diagnostic-finding " + (
-                  diagnostic.severity === "error"
-                    ? "cursor-pointer bg-transparent text-left text-[12px] text-destructive hover:underline"
-                    : "cursor-pointer bg-transparent text-left text-[12px] text-warn hover:underline"
-                )}
-              >
-                <span>[{diagnostic.rule}] {diagnostic.message}</span>
+              <li key={diagnostic.key} className="issue-item">
+                <strong>{diagnostic.severity === "error" && <span className="text-destructive">Error · </span>}{explanation.title}</strong>
                 <span className="finding-location">{explanation.location}</span>
-                <span className="finding-explanation">{explanation.explanation}</span>
-              </button>
-            </li>
+                <p className="finding-explanation">{explanation.explanation}</p>
+                {(diagnostic.where !== undefined || diagnostic.clipIds.length > 0) && <button
+                  type="button" className="diagnostic-finding" aria-label={`Show on timeline: ${explanation.title}`}
+                  onClick={() => {
+                    useUiStore.getState().openTab("timeline");
+                    if (diagnostic.where !== undefined) setPlayhead(diagnostic.where);
+                    selectClip(diagnostic.clipIds[0] ?? null);
+                  }}>Show on timeline</button>}
+              </li>
           );})}
         </ul>
       )}

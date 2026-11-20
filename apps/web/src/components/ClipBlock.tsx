@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Clip, Diagnostic } from "@cutroom/engine";
+import { assetById, type Clip, type Diagnostic } from "@cutroom/engine";
 import type { TimeScale } from "../lib/timeScale";
 import { authorColor } from "../lib/identity";
 import type { DiffTint } from "../lib/diffView";
@@ -61,7 +61,7 @@ export const ClipBlock = memo(function ClipBlock({
 }: ClipBlockProps) {
   const selected = useEditorStore((state) => state.selectedClipId === clip.id);
   const poster = useMediaPosters((posters) => posters.get(clip.assetId));
-  const asset = useEditorStore((state) => state.timeline.assets[clip.assetId]);
+  const asset = useEditorStore((state) => assetById(state.timeline, clip.assetId));
   const imageUrl = useAssetUrls((urls) => asset?.kind === "image" ? urls.get(clip.assetId) : undefined);
   const locked = useUiStore((state) => state.lockedTrackIds.includes(clip.trackId));
   const [moveDelta, setMoveDelta] = useState(0);

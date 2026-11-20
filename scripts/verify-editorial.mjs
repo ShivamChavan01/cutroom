@@ -1,3 +1,4 @@
+import { openProjectTool } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -42,6 +43,7 @@ async function range(label,value) {
 try {
   await page.goto(target);
   await page.locator("header input[type=file]").first().setInputFiles(video);
+  await openProjectTool(page, "Media");
   await page.waitForFunction(()=>document.querySelector(".media-poster-image")?.naturalWidth>0);
   const name=path.basename(video);
   await page.getByRole("button",{name:`Select media ${name}`,exact:true}).click();
@@ -61,6 +63,8 @@ try {
   await page.getByRole("button",{name:"All",exact:true}).click();
   await capture("media-search-tags-and-layout");
 
+  await openProjectTool(page, "Properties");
+  await page.locator('details[aria-label="Clip transform"] > summary').click();
   await number("Position X",24);
   await number("Position Y",-10);
   await number("Scale X %",75);
@@ -100,6 +104,7 @@ try {
   assert.equal(await page.getByRole("spinbutton",{name:"In point seconds",exact:true}).evaluate((item)=>document.activeElement===item),true);
   await capture("trim-drag-and-fit");
 
+  await openProjectTool(page, "Media");
   await page.getByRole("tab",{name:"Graphics",exact:true}).click();
   await page.locator("header input[type=file]").first().setInputFiles(graphic);
   await page.getByRole("button",{name:`Select media ${path.basename(graphic)}`,exact:true}).click();
@@ -115,15 +120,16 @@ try {
   await page.getByRole("button",{name:"Exit fullscreen",exact:true}).click();
   await page.waitForFunction(()=>document.fullscreenElement===null);
 
-  await page.getByRole("tab",{name:"Project",exact:true}).click();
+  await openProjectTool(page, "Settings");
   await page.getByRole("textbox",{name:"Project name",exact:true}).fill("The quiet north");
-  await page.getByRole("button",{name:"Save name",exact:true}).click();
+  await page.getByLabel("Project name", {exact: true}).press("Enter");
   await page.getByRole("combobox",{name:"Timeline frame rate",exact:true}).selectOption("24");
-  page.once("dialog",(dialog)=>dialog.accept("alternate"));
-  await page.getByRole("button",{name:"Add version",exact:true}).click();
-  await page.getByRole("button",{name:"Versions",exact:true}).click();
-  await page.getByPlaceholder("commit message",{exact:true}).fill("Editorial feature check");
-  await page.getByRole("button",{name:"Commit",exact:true}).click();
+  await openProjectTool(page, "Versions");
+  await page.getByText("Create another cut", {exact: true}).click();
+  await page.getByLabel("Cut name", {exact: true}).fill("alternate");
+  await page.getByRole("button", {name: "Create cut", exact: true}).click();
+  await page.getByPlaceholder("Describe your edit",{exact:true}).fill("Editorial feature check");
+  await page.getByRole("button",{name:"Save version",exact:true}).click();
   await page.getByText("saved",{exact:true}).waitFor();
   await page.locator("header").first().getByRole("button",{name:"Export timeline",exact:true}).click();
   const downloadPromise=page.waitForEvent("download");
@@ -137,9 +143,11 @@ try {
   await page.reload();
   await page.locator("header").first().getByText("The quiet north",{exact:true}).waitFor();
   await page.getByRole("button",{name:clipLabel,exact:true}).click();
+  await openProjectTool(page, "Properties");
+  await page.locator('details[aria-label="Clip transform"] > summary').click();
   assert.equal(await page.getByRole("spinbutton",{name:"Position X",exact:true}).inputValue(),"24");
   assert.equal(await page.getByRole("spinbutton",{name:"Rotation",exact:true}).inputValue(),"15");
-  await page.getByRole("tab",{name:"Project",exact:true}).click();
+  await openProjectTool(page, "Settings");
   assert.equal(await page.getByRole("combobox",{name:"Timeline frame rate",exact:true}).inputValue(),"24");
   await page.setViewportSize({width:1100,height:720});
   await capture("persisted-editorial-project-laptop");

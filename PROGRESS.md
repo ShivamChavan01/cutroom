@@ -1,0 +1,22 @@
+# Cutroom progress
+
+## November 20, 2026
+
+Current focus is browser playback and timeline scrubbing on larger projects.
+
+- **Editor layout.** Assistant opens from the top right in a full-height, resizable panel. Media, Versions, Issues, Properties, and Settings are accessible from the left. Browser checks covered 1024, 1280, and 1440 px widths, resizing, and preserving a chat draft when reopening Assistant.
+- **Multitrack playback.** Tested a three-minute sequence with 240 clips across two video and two audio tracks. The player now pauses ready tracks while another active track buffers and reuses loaded media across cuts. A repeat advanced 35.9 seconds over 36 seconds with one 207 ms playhead gap.
+- **Long footage.** Imported a ten-minute 720p H.264 clip. All 60 jumps in the initial run showed the requested frame. Median pointer-to-frame-callback latency was 365 ms. The collected JavaScript heap measured 6.10 MiB after 60 jumps and again after five idle seconds. Total browser and GPU memory are still unmeasured.
+- **Seek profiling.** In two further runs, 109 of 120 pointer moves arrived during a previous seek. Median time to request the new position was 228 and 242 ms on those moves, versus 3 and 7 ms when the video was ready. In a control run, waiting for the previous seek before moving the pointer gave a 2 ms median from move to request. After the request, frames farther from the preceding keyframe also took longer to present on this source.
+- **Large timeline jumps.** The player now replaces one pending seek per video drag when a single move skips at least ten seconds. On the ten-minute fixture, median move-to-frame time fell from 496 to 293 ms over 60 matched jumps per build. All jumps landed correctly. Continuous long sweeps still showed a median of five intermediate frames, and cross-cut drag checks passed.
+- **Scrubbing proxy experiment.** A 360p15 preview showed a median of 92 distinct frames per sweep versus 7 with the original. The local encode took 42 seconds and added 5.39 MiB for the ten-minute clip. All releases returned to the exact original frame. Median release latency increased from 329 to 453 ms. This was a benchmark-only build.
+- **Resolution stress test.** Tested 720p, 1080p and upscaled 4K footage on the same 48-second edit. Across five 4K sweeps, the 360p proxy showed a median of 52.0 distinct frames/s versus 0.2 on the original. The median wait for the exact 4K frame after release was 2.06 s with the proxy. The prototype still needs a handoff that keeps a usable image visible during that wait.
+- **Full-resolution baseline.** The editor uses the imported original by default. With one 4K layer, playback kept real time across three short windows, but dragging showed only 4–5 intermediate frames per sweep. At 8K the active video advanced 2.02 seconds in 9.06 seconds and showed zero intermediate frames in all three sweeps. Both files were upscaled from one 1080p edit.
+- **8K pause diagnosis.** In all three trials the timeline ran ahead of the waiting video, requested a correction seek, then paused the seeking element. Plain video playback also fell below real time on this laptop's software decoder.
+- **4K seek diagnosis.** Keyframe spacing explained most of the wait on the matched inputs. Across six direct browser seeks the median was 1,183 ms with four-second keyframes and 251 ms with one-second keyframes. Both files stayed at 4K. Editor traces showed similar waits.
+- **Single-video playback fix.** A lone video now paces the timeline when the decoder falls behind. The 8K playback trace showed zero catch-up seeks or automatic pauses during three playback windows. Software decoding still limited frame delivery. In the 240-clip regression, the player reused loaded videos across cuts and audio stayed within 250 ms when switching between solo and layered playback.
+- **4K editing copies.** Media → File details can prepare a separate full-resolution local MP4 for the current preview. Median click-to-frame time fell from 1,738 to 361 ms across six matched positions. The 12-second test clip took 57.8 seconds to prepare. Frame count, dimensions, duration, decoded audio and switching back to the original were verified.
+- **Next performance check.** Repeat on longer camera originals with hardware 8K decoding and measure preparation time and disk use on production-length projects.
+- **Predictive context.** Paused until there is a way to evaluate predictions against actual editing sessions.
+
+See [browser performance measurements](PERF.md) for workload details and limits.

@@ -1,4 +1,5 @@
 import {
+  assetById,
   type Clip,
   type Millis,
   type Timeline,
@@ -257,7 +258,7 @@ const missingMediaRule = defineRule(
   (timeline) => {
     const out: Diagnostic[] = [];
     for (const clip of Object.values(timeline.clips)) {
-      if (timeline.assets[clip.assetId] === undefined) {
+      if (assetById(timeline, clip.assetId) === undefined) {
         out.push({
           rule: "missing-media",
           key: diagnosticKey("missing-media", [clip.id]),
@@ -299,7 +300,7 @@ const trimPastSourceRule = defineRule(
   (timeline) => {
     const out: Diagnostic[] = [];
     for (const clip of Object.values(timeline.clips)) {
-      const asset = timeline.assets[clip.assetId];
+      const asset = assetById(timeline, clip.assetId);
       if (asset !== undefined && clip.inPoint + clip.duration > asset.duration) {
         out.push({
           rule: "trim-past-source",

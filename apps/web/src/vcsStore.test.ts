@@ -22,7 +22,7 @@ it.each(["checkoutBranch", "viewCommit"] as const)("%s cannot discard dirty work
   useEditorStore.getState().dispatch({ type: "renameProject", name: "Unsaved" });
   const before = useEditorStore.getState();
   const repo = useVcsStore.getState().repo;
-  expect(() => useVcsStore.getState()[action](action === "viewCommit" ? "c0" : "feature")).toThrow(/uncommitted/i);
+  expect(() => useVcsStore.getState()[action](action === "viewCommit" ? "c0" : "feature")).toThrow(/Save a version or create another cut/);
   expect(useEditorStore.getState()).toBe(before);
   expect(useVcsStore.getState().repo).toBe(repo);
 });

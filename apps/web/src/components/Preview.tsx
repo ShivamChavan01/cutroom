@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { demoHref, isDemoWorkspace } from "../lib/workspace";
 import { Clapperboard, Maximize, Minimize } from "lucide-react";
 import { Player } from "./Player";
+import { UploadButton } from "./UploadButton";
 import { Transport } from "./Transport";
 import { useEditorStore } from "../store";
+import { indexedClipCount } from "../lib/clipIndex";
 
 export function Preview() {
-  const empty = useEditorStore((state) => Object.keys(state.timeline.clips).length === 0);
+  const empty = useEditorStore((state) => indexedClipCount(state.timeline) === 0);
   const root = useRef<HTMLElement | null>(null);
   const [zoom, setZoom] = useState<"fit" | number>("fit");
   const [fullscreen, setFullscreen] = useState(false);
@@ -52,7 +55,9 @@ export function Preview() {
           <div className="studio-viewer-empty">
             <Clapperboard size={34} aria-hidden />
             <h3>Your sequence plays here.</h3>
-            <p>Cuts, gaps, and audio follow the timeline below.</p>
+            <p>Drop files onto the timeline or choose them here.</p>
+            <UploadButton label="Choose files" />
+            {!isDemoWorkspace() && <a className="empty-sample-link demo-start" href={demoHref()} target="_blank" rel="noopener noreferrer">Try the sample project ↗</a>}
           </div>
         )}
       </div>

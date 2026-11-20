@@ -13,14 +13,12 @@ not a rendered MP4.
 
 ## Try the sample project
 
-Choose **Try demo project** inside the editor. Run `pnpm dev` to preview this
-working revision. The improved guidance and merge recovery described here need
-an authorized deployment before they appear on the hosted editor. No upload or
-AI access code is needed for the sample.
+Choose **Try the sample project** in the empty preview of the hosted editor, or run
+`pnpm dev` to open it locally. The sample includes its own footage and works without an AI access code.
 
-1. Choose **Try demo project**. A separate sample tab opens with an eight-second
+1. Choose **Try the sample project**. A separate sample tab opens with an eight-second
    original motion study, three video clips, and an audio bed. Press Play.
-2. Choose **See two versions**. Switch between `main` and `alternate`, or open
+2. Open the project menu beside the Cutroom logo, choose **Sample guide**, then **See two versions**. Switch between `main` and `alternate`, or open
    **Graph** to see their shared ancestor and independent commits.
 3. Choose **Compare edits**. The real timeline diff shows moves and a trim.
 4. Choose **Merge versions**. Main moves `middle` to 3–5 seconds; alternate moves
@@ -54,7 +52,8 @@ edits or reset before repeating the guide.
   saved versions and working edits remain available. Cancel is always explicit
   for a valid merge. Merely reloading never commits it.
   Save completion acknowledges its captured history, branch graph and pending
-  merge only; an older write cannot mark newer edits as saved.
+  merge only. Writes are queued before opening IndexedDB, so an older delayed
+  write cannot replace a newer snapshot.
 - Commit working edits before merging, including tag changes. A source already
   included in the current version is an **Already up to date** no-op. If the
   current version is an ancestor of the source, merging fast-forwards the branch
@@ -63,8 +62,9 @@ edits or reset before repeating the guide.
 - Tag changes participate in Undo/Redo and saved version snapshots. Importing a
   source keeps it in the media library when its clip is undone. Reimporting the
   same content adds another clip without overwriting its existing name or tags.
-  New saves use internal project schema 2; this build reads schema 1 and 2.
-  Older builds cannot read schema 2. Timeline export formats are unchanged.
+  Context-free saves use internal project schema 2; saves with production
+  context use schema 3. This build reads schemas 1, 2 and 3. Older builds cannot
+  read schema 3. Timeline export formats are unchanged.
 - Clip authors in the inspector and timeline survive checkout and reload.
   They trace the latest clip-changing commit; working differences use the latest
   active clip operation. An unchanged merge-parent clip keeps its attribution;
@@ -86,11 +86,88 @@ edits or reset before repeating the guide.
   Checking out a version or fast-forwarding also restores its locally stored
   media. Missing or evicted files still require reimporting; browser storage
   cannot recover media that is no longer on disk.
-  Use one tab per workspace; concurrent writes to the same workspace do not have
-  synchronization or cross-tab conflict protection.
+  Tabs do not synchronize live. Each write and reset atomically compares the
+  stored project with that tab's last observed snapshot. A stale tab cannot
+  overwrite or delete newer saved work: it shows **save failed** and keeps its
+  candidate in memory. Export its timeline before reloading to load the newer
+  saved project. IndexedDB upgrades to version 2 without rewriting the project
+  records or media; version-one clients can no longer open it to perform unsafe
+  writes. Reload older tabs after exporting any unsaved edits. This protects
+  saved history; it does not merge tabs automatically. IndexedDB remains version 2.
 - Media is self-created procedural graphics and synthesized sound, under CC0.
   See [provenance and regeneration instructions](apps/web/public/demo/README.md).
   The two sources total under 400 KB and are requested only in the sample.
+
+### Context-aware gain suggestions
+
+Split one audio source into at least four clips on the same audio track. In
+**Properties → Audio**, manually set three distinct clips to the same
+gain, then select a fourth clip. Cutroom offers a gain match with the supporting
+clip IDs and times. **Preview gain match** shows the before/after value without
+editing. **Apply gain match** creates one ordinary operation; one Undo reverses it.
+
+Suggestions use completed manual gestures from this session. Slider ticks and
+keyboard repeat count as one decision until release or blur. The latest three
+eligible distinct decisions must agree. Applied proposals and restored history
+do not become manual evidence. This matches linear gain within a source; it does
+not measure or normalize loudness.
+
+Dismissal and immediate Undo suppress that offer until new supporting manual
+evidence appears. **Suggest gain matches** disables suggestions and clears their
+session context. Locked tracks, playback, pending merges, changed supporting
+clips and stale previews prevent application. Checkout, forks and restored
+sessions clear the evidence; committing retains it but invalidates old previews.
+
+The context is bounded to 32 completed decisions, 32 suppressions and 64 feedback
+events, held in memory. It sends no model requests and is not saved in project
+history. This first prediction rule covers gain matching. General next-action
+prediction and model ranking remain unimplemented.
+
+### Review a production brief, reference direction and continuity
+
+Open **Assistant** at the top right, choose **Brief & references**, and enter
+the **Production brief**. Expand **Add direction
+or requirements** to add reference-style directions, continuity instructions
+or a maximum deliverable duration. Save the brief before requesting or applying
+edits. Select a clip and choose **Protect selected picture** or **Protect
+selected audio** to require its source range to remain in the cut.
+
+The production context belongs to the project and stays available across
+timeline branches and reloads. Timeline Undo does not undo brief changes.
+**Import or export source evidence** accepts a production-context JSON document
+with authored transcripts, shot notes, continuity notes and source ranges.
+Export preserves those inputs independently of timeline interchange export.
+The [authored sample context](examples/production-context.demo.json) works with
+the bundled demo project. It is explicitly a fixture, not footage analysis.
+
+With a saved brief, sending a question assembles bounded
+context from the brief, every requirement, reference directions, selected and
+supporting clips, and retrieved evidence. It reports omitted notes and clips.
+**Inspect request context** shows the evidence, source times and omissions
+before sending the request.
+Explicitly referenced evidence and mandatory context are never silently dropped;
+an insufficient budget produces an error. This path does not have the legacy
+whole-timeline assistant's 1,000-clip limit.
+
+Proposal review shows duration, protected-range and source-sequence checks.
+Apply rejects regressions in required constraints, including muting protected
+audio. Split clips can satisfy a protected range when they retain continuous
+source placement. Ambiguous repeated takes and absent source metadata require
+review. **Show changes on timeline** marks proposed edits while the viewer plays
+the current cut. Scrubbing keeps the proposal available, and pausing playback
+enables Apply again if the proposal is still current. Changes to the timeline,
+selection, version, locks, session or saved brief invalidate the proposal.
+Applied operations still use ordinary Undo.
+
+Reference style and visual continuity remain human judgments. Imported notes
+are user-provided evidence; no automatic transcription, scene understanding or
+style analysis runs here. Placement checks do not establish rendered quality,
+physical media availability, preview mute/hide state or perceptual continuity.
+The next-action predictor remains the gain baseline above. This context layer
+currently supports user-requested assistant review.
+
+See [the production context contract](docs/production-context.md) for the format,
+ownership, compatibility and verification scope.
 
 ### Assistant and export availability
 
@@ -109,8 +186,7 @@ Desktop editing is checked at 1440×900, 1366×768, 1280×800 and 1024×768. Pan
 remain resizable; larger monitors give the preview and inspector more room.
 Narrow screens show a desktop notice: full mobile editing is not supported.
 Structural checks do not prove visual/audio quality or frame-accurate playback.
-See [the current readiness review](FOUNDER-READINESS-REPORT.md),
-[test results](TEST-RESULTS.md), and [demo limitations](DEMO-LIMITATIONS.md). Vercel builds the monorepo using `vercel.json` on `main`;
+See [demo limitations](DEMO-LIMITATIONS.md). Vercel builds the monorepo using `vercel.json` on `main`;
 the [GitHub Pages static mirror](https://shivamchavan01.github.io/cutroom/) has no
 AI endpoint.
 
@@ -128,12 +204,13 @@ AI endpoint.
   trim-past-source, zero-length, unused-asset. Severity is caller-assigned.
 - **Web UI** (`apps/web`): a dark editorial workspace with searchable
   media, grid/list views, editable tags, footage/graphics/sequences tabs,
-  a program monitor and a full-width timeline. Import video, audio and
+  a program monitor and timeline that share the editing column. Import video, audio and
   images; edit clip position, linked or independent scale, rotation, trim,
   start time and volume. Add video tracks, drag clips, hide/mute/lock tracks,
   zoom or fit the timeline, and use preview zoom/fullscreen. Clip, Sequence
-  and Project inspector tabs include project naming and frame-rate settings.
-  Resizable panels, verification, a Review drawer, command palette,
+  and Project tabs in Properties include project naming and frame-rate settings.
+  Properties and Assistant open in a collapsible sidebar. Issues appear beside
+  the timeline. Resizable panels, an Activity drawer, command palette,
   undo/redo, blame and activity sit alongside commits, branches, a visual
   commit graph, diffs and merge conflict resolution. The version rail can
   fork a version while preserving current edits. The graph marks shared tips,
@@ -200,8 +277,7 @@ merge UI is. Collab infra (`apps/server`) is not built yet.
 - **Rust/WASM** — the engine is small JSON (see table); decoded media is
   the memory cost and browsers already decode natively. Revisit for pixel
   pipelines, not for this layer.
-- **Yjs live collab + server** — architecture sketched in CONTEXT.md,
-  not built.
+- **Yjs live collab + server** — not built.
 - **Video rendering** — exports are timelines. There is no canvas/WebGL
   compositor and no encoder, so nothing here produces an MP4.
 
@@ -224,13 +300,13 @@ runs. Test media for the player checkpoint: drop two mp4s at
 
 ## Status
 
-633 engine/web tests green (181 engine + 452 web/server), both TypeScript checks
-and the production build pass. The separate measurement harness is checked with
-Vitest (16 passing tests; 649 total across the three runs).
-The [Day 1 correctness report](DAY1-REPORT.md) records reproductions,
-browser evidence, merge policies and remaining persistence limitations. Honest
-accounting of what's proven vs pending lives in CONTEXT.md, CARDBOARD-KB.md
-(research notes), and PERF.md.
+2,977 cases pass across 106 files in the combined engine, web, adversarial
+and measurement-script checks. The current run used two batches; CLI startup
+timeouts under host load passed on rerun without assertion changes. Both TypeScript checks and the production build pass. Current local browser
+evidence covers the agent workspace, production context workflow and gain baseline; model
+responses in those checks are controlled fixtures. These are local checks, not
+verification of the current hosted deployment. See [performance measurements](PERF.md)
+and [demo limitations](DEMO-LIMITATIONS.md) for measurement scope and limitations.
 
 Tabs use the shadcn composition with Radix primitives for keyboard navigation,
 focus and linked panels. The dark palette has text-contrast regressions;
@@ -281,10 +357,23 @@ your work quietly.
 
 ## AI verification assistant
 
-Open **Issues → Explain issues with AI**, or **Assistant** in the sidebar.
+Open **Assistant** at the top right or choose **Issues → Explain issues with AI**.
+The conversation fills the left sidebar beside the preview and timeline. Enter sends
+and Shift+Enter inserts a line break. **Brief & references** opens the brief,
+reference directions, requirements and source evidence. Its Save action stays
+visible while the form scrolls. Switch to **Properties** or close the sidebar
+to widen the preview. Reopening Assistant restores your question and drafts.
+
+Conversation stays in memory during this page session. Requests include at
+most 12 recent messages within 12,000 characters, alongside current project
+context. Save lasting instructions in Context; conversation and unsaved drafts
+are cleared by reload or project reset. Saved context persists across reloads.
+
 The assistant explains structural findings and proposes edits. Each proposal
 shows the clip changes and the findings it would resolve or introduce.
-Nothing changes until you apply it. Applied operations use the existing
+**Preview changes**, **Apply**, and **Dismiss** stay beside the input even when
+replies are long. Preview opens the proposed timeline comparison without
+changing the cut. Nothing changes until you apply it. Applied operations use the existing
 history and version workflow; Undo reverses one operation at a time.
 Changed timelines invalidate previews, and track locks are checked again
 when applying. Finish or cancel a merge before using the assistant.

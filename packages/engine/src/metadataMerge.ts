@@ -1,4 +1,4 @@
-import type { Asset, Timeline, Track } from "./model";
+import { assetById, type Asset, type Timeline, type Track } from "./model";
 import { refreshMergeConflicts, type Conflict, type MergeResult } from "./merge";
 
 const ASSET_FIELDS = ["kind", "duration", "width", "height", "bytes", "proxyId", "name", "mimeType"] as const;
@@ -50,9 +50,9 @@ function referencedByClip(clips: Timeline["clips"], conflicts: readonly Conflict
 /** Metadata uses the same three-way rules as clips; tags are unordered membership. */
 export function mergeMetadata(base: Timeline, ours: Timeline, theirs: Timeline, clips: Timeline["clips"], clipConflicts: readonly Conflict[] = []): { assets: Timeline["assets"]; tracks: Timeline["tracks"]; conflicts: MetadataConflict[] } {
   const conflicts: MetadataConflict[] = [];
-  const assets: Record<string, Asset> = {};
+  const assets: Record<string, Asset> = Object.create(null);
   for (const id of new Set([...Object.keys(base.assets), ...Object.keys(ours.assets), ...Object.keys(theirs.assets)])) {
-    const b = base.assets[id], o = ours.assets[id], t = theirs.assets[id];
+    const b = assetById(base, id), o = assetById(ours, id), t = assetById(theirs, id);
     if (o !== undefined && t !== undefined) assets[id] = mergeAsset(id, b, o, t, conflicts);
     else if (b === undefined) {
       const survivor = o ?? t;
@@ -119,7 +119,7 @@ export function resolveMetadata(result: MergeResult, conflict: MetadataConflict,
   let merged = result.merged;
   switch (conflict.kind) {
     case "assetField": {
-      const asset = merged.assets[conflict.assetId];
+      const asset = assetById(merged, conflict.assetId);
       if (asset === undefined || choice === "keep") throw new Error("Choose an asset field value from ours or theirs.");
       merged = { ...merged, assets: { ...merged.assets, [asset.id]: { ...asset, [conflict.field]: conflict[choice] } } };
       break;
@@ -130,7 +130,7 @@ export function resolveMetadata(result: MergeResult, conflict: MetadataConflict,
       break;
     }
     case "assetPresence": {
-      const asset = choice === "keep" ? merged.assets[conflict.assetId] ?? conflict.base : conflict[choice];
+      const asset = choice === "keep" ? assetById(merged, conflict.assetId) ?? conflict.base : conflict[choice];
       if (asset === undefined && referencedByClip(merged.clips, result.conflicts, "assetId", conflict.assetId)) throw new Error("Remove referencing clips or resolve their references before deleting this asset, or keep the metadata.");
       const assets = { ...merged.assets };
       if (asset === undefined) delete assets[conflict.assetId]; else assets[conflict.assetId] = asset;

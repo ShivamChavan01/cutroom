@@ -29,6 +29,10 @@ describe("preview controls", () => {
     expect(html).toContain('value="0.5"');
     expect(html).toContain('aria-label="Enter fullscreen"');
     expect(html).toContain("Your sequence plays here.");
+    expect(html).toContain("Try the sample project");
+    expect(html).toContain("Choose files");
+    expect(html).toContain('type="file"');
+    expect(html.match(/<button[^>]*aria-label="play"[^>]*>/)?.[0]).toContain('disabled=""');
   });
 
   it("uses the project frame rate in transport timecode", () => {
@@ -42,6 +46,7 @@ describe("preview controls", () => {
     useEditorStore.getState().loadTimeline({ ...emptyTimeline(), clips: { upper: clip } });
     const html = renderToStaticMarkup(<Transport />);
     const next = html.match(/<button[^>]*aria-label="next cut"[^>]*>/)?.[0];
+    expect(html.match(/<button[^>]*aria-label="play"[^>]*>/)?.[0]).not.toContain('disabled=""');
     expect(next).toBeDefined();
     expect(next).not.toContain('disabled=""');
   });

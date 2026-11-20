@@ -1,11 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
-import { emptyTimeline, makeClip, putAsset } from "@cutroom/engine";
+import { emptyTimeline, makeClip, putAsset, type Timeline } from "@cutroom/engine";
 import { assistantConfiguration, requestProposal } from "./request";
+import { parseProductionDocument } from "../production/document";
 
 const before = { ...putAsset(emptyTimeline(), { id: "a", kind: "video", duration: 5000 }), clips: { c: makeClip({ id: "c", assetId: "a", trackId: "v1", start: 1000, duration: 1000, inPoint: 0, volume: 1 }) } };
 const input = { prompt: "Fix the leading gap", before, selectedClipId: "c", playheadMs: 0, lockedTrackIds: [] };
 const signal = new AbortController().signal;
 describe("assistant client", () => {
+  it("supplies recent conversational turns alongside the current timeline", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ summary: "No edits", ops: [] }));
+    await requestProposal({ ...input, conversation: [{ role: "user", content: "Keep the introduction" }, { role: "assistant", content: "The introduction stays." }] }, signal, fetcher);
+    const context = JSON.parse(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).context);
+    expect(context.conversation).toEqual([{ role: "user", content: "Keep the introduction" }, { role: "assistant", content: "The introduction stays." }]);
+    expect(context.clips).toBeDefined();
+  });
+  it("rejects edits to existing clips omitted from the bounded task context", async () => {
+    const production = parseProductionDocument({ version: 1, brief: "Review the selected passage.", styleReferences: [], evidence: [], requirements: [] });
+    const timeline: Timeline = { ...before, clips: { ...before.clips, ...Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`z${index}`, { ...before.clips.c, id: `z${index}`, start: index * 2000 }])) } };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ summary: "Edit an omitted clip", ops: [{ type: "setVolume", clipId: "z99", volume: 0.5 }] }));
+    await expect(requestProposal({ ...input, before: timeline, production }, signal, fetcher)).rejects.toThrow("outside the supplied production context");
+    expect(timeline.clips.z99?.volume).toBe(1);
+  });
+  it("sends bounded production context and previews constraint regressions without editing", async () => {
+    const production = parseProductionDocument({ version: 1, brief: "Preserve this whole statement.", styleReferences: [], evidence: [], requirements: [
+      { id: "quote", label: "Whole statement", kind: "preserve", priority: "required", range: { assetId: "a", channel: "video", inMs: 0, outMs: 1000 } },
+    ] });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ summary: "Remove statement", ops: [{ type: "deleteClip", clipId: "c" }] }));
+    const result = await requestProposal({ ...input, production }, signal, fetcher);
+    const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(JSON.parse(body.context).kind).toBe("production-context");
+    expect(JSON.parse(body.context).brief).toBe(production.brief);
+    expect(result.production?.regression).toContain("Whole statement");
+    expect(before.clips.c).toBeDefined();
+  });
   it("accepts River configuration so the disclosure identifies the provider receiving metadata", async () => {
     const config = { provider: "River", model: "deepseek-ai/DeepSeek-V4.1-Flash-1017", configured: true, accessRequired: true };
     expect(await assistantConfiguration(signal, vi.fn<typeof fetch>().mockResolvedValue(Response.json(config)))).toEqual(config);

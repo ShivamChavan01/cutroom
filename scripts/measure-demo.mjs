@@ -1,3 +1,4 @@
+import { openSampleGuide } from "./project-navigation.mjs";
 import assert from "node:assert/strict";
 import {mkdir, writeFile} from "node:fs/promises";
 import path from "node:path";
@@ -29,7 +30,7 @@ try {
     const demoStarted = performance.now();
     await page.locator(".demo-start").click();
     const demo = await popup;
-    await demo.locator(".demo-guide").waitFor();
+    await demo.locator(".demo-guide").waitFor({state: "attached"});
     const demoInitializedMs = performance.now() - demoStarted;
     await decoded(demo);
     const playbackReadyMs = performance.now() - demoStarted;
@@ -47,20 +48,20 @@ try {
     if (run === 1) {
       await demo.getByRole("button", {name: "Fit timeline", exact: true}).click();
       await demo.screenshot({path: path.join(output, "sample-built.png")});
-      await demo.getByRole("button", {name: "See two versions", exact: true}).click();
-      await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
-      await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "See two versions", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Compare edits", exact: true}).click();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Merge versions", exact: true}).click();
       await demo.getByRole("button", {name: "Keep middle", exact: true}).waitFor();
       await demo.screenshot({path: path.join(output, "conflict-built.png")});
       await demo.getByRole("button", {name: "Keep middle", exact: true}).click();
       await demo.getByPlaceholder("merge commit message", {exact: true}).fill("Production bundle smoke test");
       await demo.getByRole("button", {name: "Commit merge", exact: true}).click();
-      await demo.getByRole("button", {name: "Inspect findings", exact: true}).click();
-      await demo.getByRole("button", {name: /\[gap\].*1200ms/}).first().waitFor();
+      await openSampleGuide(demo); await demo.getByRole("button", {name: "Inspect findings", exact: true}).click();
+      await demo.getByRole("button", {name: /Show on timeline: 1\.2-second gap/}).first().waitFor();
       await demo.waitForFunction(() => /\bsaved\b/.test(document.querySelector("footer")?.innerText ?? ""));
       await demo.reload(); await decoded(demo);
       const saved = await demo.evaluate(async () => {
-        const db = await new Promise((resolve, reject) => {const request = indexedDB.open("cutroom", 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);});
+        const db = await new Promise((resolve, reject) => {const request = indexedDB.open("cutroom"); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);});
         try {return await new Promise((resolve, reject) => {const request = db.transaction("projects", "readonly").objectStore("projects").get("current.demo-v1"); request.onsuccess = () => resolve(JSON.parse(request.result)); request.onerror = () => reject(request.error);});}
         finally {db.close();}
       });

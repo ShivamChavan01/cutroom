@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLayout, readLayout, writeLayout } from "./layout";
+import { layoutForPanels, parseLayout, readLayout, writeLayout } from "./layout";
 
 describe("layout persistence", () => {
   it("round-trips a layout through storage", () => {
@@ -21,11 +21,21 @@ describe("layout persistence", () => {
     expect(parseLayout('{"a":-1}')).toBeNull();
   });
 
-  it("keeps only positive finite numbers", () => {
+  it("retains collapsed panels and rejects negative or nonnumeric sizes", () => {
     expect(parseLayout('{"a":10,"b":0,"c":-2,"d":"x","e":3.5}')).toEqual({
       a: 10,
+      b: 0,
       e: 3.5,
     });
+  });
+
+  it("restores only complete normalized layouts and keeps edit and agent sizes independent", () => {
+    const fallback = { library: 52, viewer: 48, properties: 0 };
+    expect(layoutForPanels({ library: 55, viewer: 45, properties: 0 }, Object.keys(fallback), fallback)).toEqual({ library: 55, viewer: 45, properties: 0 });
+    for (const invalid of [null, { library: 60 }, { library: 80, viewer: 40, properties: 0 }, { library: 0, viewer: 0, properties: 0 }]) {
+      expect(layoutForPanels(invalid, Object.keys(fallback), fallback)).toBe(fallback);
+    }
+    expect(readLayout({ getItem: () => { throw new Error("Storage blocked"); } }, "agent")).toBeNull();
   });
 
   it("survives storage that throws", () => {

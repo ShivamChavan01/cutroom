@@ -15,7 +15,9 @@ import { workspaceKey } from "../workspace";
  */
 
 export const DB_NAME = "cutroom";
-export const DB_VERSION = 1;
+// Version one clients write unconditionally. Upgrading fences those writers
+// without changing the projects store or its serialized data.
+export const DB_VERSION = 2;
 export const STORE_NAME = "projects";
 export const PROJECT_KEY = "current";
 
@@ -49,95 +51,130 @@ function openDatabase(): Promise<IDBDatabase> {
   }
   return new Promise((resolve, reject) => {
     const request = factory.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      if (blocked) {db.close(); return;}
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     request.onerror = () =>
       reject(request.error ?? new Error("could not open IndexedDB"));
-    request.onblocked = () =>
-      reject(new Error("IndexedDB is blocked by another tab"));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("IndexedDB is blocked by another tab. Close other Cutroom tabs, then reload to restore your saved project."));
+    };
   });
 }
 
-export async function readProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<string | undefined>> {
-  try {
-    const db = await openDatabase();
-    try {
-      const value = await new Promise<string | undefined>((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const request = tx.objectStore(STORE_NAME).get(key);
-        request.onsuccess = () => resolve(request.result as string | undefined);
-        request.onerror = () =>
-          reject(request.error ?? new Error("could not read the project"));
-      });
-      return { ok: true, value, status: "ok" };
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return {
-      ok: false,
-      error: message,
-      status: isStorageAvailable() ? "error" : "unavailable",
-    };
-  }
+interface ProjectSlot {
+  expected: string | undefined;
+  tail: Promise<void>;
 }
 
-export async function writeProject(serialized: string, key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
+// Each tab remembers only its last observed durable value. IndexedDB remains
+// authoritative; comparison and replacement happen in one readwrite transaction.
+const slots = new Map<string, ProjectSlot>();
+
+function inOrder<T>(key: string, operation: (slot: ProjectSlot) => Promise<StorageResult<T>>): Promise<StorageResult<T>> {
+  let slot = slots.get(key);
+  if (slot === undefined) {
+    slot = {expected: undefined, tail: Promise.resolve()};
+    slots.set(key, slot);
+  }
+  const current = slot;
+  const result = current.tail.then(() => operation(current));
+  // Keep the queue usable after a failure; the caller still receives result.
+  current.tail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function storageFailure(error: unknown): StorageResult<never> {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : "unknown storage error",
+    status: isStorageAvailable() ? "error" : "unavailable",
+  };
+}
+
+export function readProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<string | undefined>> {
+  return inOrder(key, async slot => {
+    try {
+      const db = await openDatabase();
+      try {
+        const value = await new Promise<string | undefined>((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const request = tx.objectStore(STORE_NAME).get(key);
+          let value: string | undefined;
+          request.onsuccess = () => {
+            const stored: unknown = request.result;
+            if (stored !== undefined && typeof stored !== "string") {
+              reject(new Error("The stored project is not text. Export or recover it before resetting."));
+              return;
+            }
+            value = stored;
+          };
+          tx.oncomplete = () => resolve(value);
+          tx.onerror = () => reject(tx.error ?? new Error("could not read the project"));
+          tx.onabort = () => reject(tx.error ?? new Error("the project read was aborted"));
+        });
+        slot.expected = value;
+        return {ok: true, value, status: "ok"};
+      } finally {db.close();}
+    } catch (error) {return storageFailure(error);}
+  });
+}
+
+async function replaceProject(slot: ProjectSlot, key: string, value: string | undefined): Promise<StorageResult<boolean>> {
   try {
     const db = await openDatabase();
     try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).put(serialized, key);
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(key);
+        let stale = false;
+        let failure: unknown;
+        request.onsuccess = () => {
+          // Exact equality also makes repeated identical initialization safe.
+          if (request.result === value) return;
+          if (request.result !== slot.expected) {
+            stale = true;
+            tx.abort();
+            return;
+          }
+          try {
+            if (value === undefined) store.delete(key);
+            else store.put(value, key);
+          } catch (error) {
+            failure = error;
+            tx.abort();
+          }
+        };
         tx.oncomplete = () => resolve();
-        tx.onerror = () =>
-          reject(tx.error ?? new Error("could not write the project"));
-        tx.onabort = () =>
-          reject(tx.error ?? new Error("the write was aborted (quota?)"));
+        tx.onerror = () => reject(tx.error ?? new Error("could not save the project"));
+        tx.onabort = () => reject(stale
+          ? new Error("Another tab changed this workspace. Your edits remain in this tab. Export your timeline before reloading; this tab cannot overwrite the newer saved project.")
+          : failure ?? tx.error ?? new Error("the project write was aborted (quota?)"));
       });
-      return { ok: true, value: true, status: "ok" };
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return {
-      ok: false,
-      error: message,
-      status: isStorageAvailable() ? "error" : "unavailable",
-    };
-  }
+      slot.expected = value;
+      return {ok: true, value: true, status: "ok"};
+    } finally {db.close();}
+  } catch (error) {return storageFailure(error);}
 }
 
-export async function clearProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
-  try {
-    const db = await openDatabase();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).delete(key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () =>
-          reject(tx.error ?? new Error("could not clear the project"));
-      });
-      return { ok: true, value: true, status: "ok" };
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return {
-      ok: false,
-      error: message,
-      status: isStorageAvailable() ? "error" : "unavailable",
-    };
-  }
+export function writeProject(serialized: string, key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
+  return inOrder(key, slot => replaceProject(slot, key, serialized));
+}
+
+export function clearProject(key = workspaceKey(PROJECT_KEY)): Promise<StorageResult<boolean>> {
+  return inOrder(key, slot => replaceProject(slot, key, undefined));
 }
 
 /** How much room is left, if the browser will tell us. */
