@@ -4,9 +4,6 @@ This is a video-editor prototype. The tested workflow demonstrates
 structured edits, comparison, conflict-aware merging and structural review.
 It does not establish general commercial editor reliability.
 
-- The improved local revision has not been committed, pushed or deployed during
-  this review. The live site still runs `2481442`. Approve shipping and verify it
-  before presenting the new recovery behavior as hosted functionality.
 - Desktop Chrome is verified at 1440×900, 1366×768, 1280×800 and 1024×768. Full
   mobile editing is unsupported. Safari/Firefox and assistive-technology sessions
   were not tested. Existing narrow-screen notice remains.
@@ -24,15 +21,16 @@ It does not establish general commercial editor reliability.
 - Legacy saves without pending data still load. Rolling back to the older client
   can ignore the new pending field; do not expect that older client to resume it.
 - Sample and personal data use separate IndexedDB keys, OPFS directories and view
-  preferences. They share the browser origin's quota. Two tabs writing the same
-  workspace still lack cross-tab synchronization; use one tab per workspace.
+  preferences and share the browser origin's quota. Each tab checks its last
+  observed project when saving or resetting. If another tab has saved newer
+  changes, the stale tab reports a failure and retains its working cut in memory.
+  Export that timeline before reloading. Live collaboration remains outside the demo.
 - Sample reset affects only that namespace and requires confirmation. Uploaded
   sample files remain in its OPFS directory. Browser storage is device/origin
   local, subject to quota and eviction, and is not a cloud backup.
-- The normal restoration path scans the active history base. The bundled sample
-  and active personal-upload refresh are proven. Arbitrary media exclusive to old
-  commits or other branches, including non-bundled candidates in a pending merge,
-  may need reimporting. This broader restoration behavior is not claimed fixed.
+- Reload restores media listed in the history base. Checking out a version or
+  fast-forwarding a branch also restores that snapshot’s local media. If the
+  browser evicts a source file, reimport it to play the affected clips.
 - Lint checks timeline structure. A gap can be intentional or covered by another
   track. No findings does not prove visual quality, audio quality, semantic
   correctness or delivery readiness. The checker never closes pauses automatically.

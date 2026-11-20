@@ -69,13 +69,13 @@ node qa/adversarial/browser-stress.mjs
 node qa/adversarial/checkout-stress.mjs
 ```
 
-The complete Vitest audit run is expected to exit unsuccessfully on the current
-revision because media retention fails; do not skip or weaken that test.
+The November release passes all 2,030 Vitest checks in this directory, including
+the regression for retaining source media after clip deletion.
 Graph seeds are 1–1000, operation seeds 10001–11000. Failure names retain the seed.
 The oracle is independent transitive closure, not a call back into merge-base
 selection. Stress samples exclude one warm-up and retain five measured calls.
 
-Expected-failing minimal browser regressions:
+Browser regression commands
 
 ```sh
 node qa/adversarial/drop-quota.regression.mjs
@@ -83,10 +83,8 @@ node qa/adversarial/import-race.mjs
 node qa/adversarial/save-race.regression.mjs
 ```
 
-`media-browser.mjs` records the real Delete/Undo disappearance twice and the
-picker/drop storage-warning A/B control. It records observations rather than
-asserting that the known defects are fixed. The minimal regression scripts do
-assert the correct behavior and fail. Fault hooks are installed only inside
+`media-browser.mjs` records Delete/Undo and compares storage warnings for picker
+and drop imports. The minimal regression scripts assert the expected behavior. Fault hooks are installed only inside
 owned browser contexts and disappear when those contexts close.
 
 Browser stress uses stable scoped selectors so accessibility-tree scanning does

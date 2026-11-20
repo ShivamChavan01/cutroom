@@ -270,20 +270,18 @@ merge UI is. Collab infra (`apps/server`) is not built yet.
 
 ## Run it
 
+Use Node.js 24 and the pnpm version pinned in the root package. Run from the
+repository root.
+
 ```sh
-pnpm install
-# engine tests
-./node_modules/.bin/vitest run packages/engine
-# web tests
-./node_modules/.bin/vitest run apps/web
-# dev server (run vite directly; the pnpm wrapper trips on a build-approval check)
-cd apps/web && ./node_modules/.bin/vite --port 5173
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm dev
 ```
 
-`pnpm install` prints an `ERR_PNPM_IGNORED_BUILDS` warning about esbuild —
-harmless; the platform binary installs as an optional dep and everything
-runs. Test media for the player checkpoint: drop two mp4s at
-`apps/web/public/test-a.mp4` / `test-b.mp4` (gitignored, dev-only).
+The guided sample includes its media. To run the same unit tests as CI, use
+`pnpm exec vitest run packages/engine apps/web scripts/measure-editor-performance.test.mjs`.
+The standalone player checkpoint accepts two local MP4 files at
+`apps/web/public/test-a.mp4` and `apps/web/public/test-b.mp4`.
 
 ## Status
 

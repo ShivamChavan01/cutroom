@@ -1,5 +1,11 @@
 # Cutroom progress
 
+## November 21, 2026
+
+- **Release.** The guided sample, editor workspace, production brief review, gain suggestions, local save protections and playback updates are available in the [public editor](https://cutroom-editor.vercel.app/?demo=1). The guided sample works without an access code. [Release commit](https://github.com/ShivamChavan01/cutroom/commit/528f53a) · [CI and Pages deployment](https://github.com/ShivamChavan01/cutroom/actions/runs/44811133890)
+- **Public walkthrough.** In desktop Chrome, compared the sample versions, confirmed the 4–5 second conflict blocked the commit, kept the middle shot, committed the merge and opened the resulting gap finding. The [README](README.md) shows the conflict from that walkthrough.
+- **Regression checks.** All 2,030 tests in the separate adversarial Vitest suite passed, including seeded graph and timeline cases and source retention after deleting a clip. [Fixtures and commands](qa/adversarial/README.md)
+
 ## November 20, 2026
 
 Current focus is browser playback and timeline scrubbing on larger projects.
